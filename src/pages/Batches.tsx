@@ -347,6 +347,10 @@ export function Batches() {
       }
     }
 
+    // Get duty_percent from the product (Form A1) as the default
+    const selectedProduct = products.find(p => p.id === batch.product_id);
+    const productDutyPercent = selectedProduct?.duty_percent || 0;
+
     setFormData({
       batch_number: batch.batch_number,
       product_id: batch.product_id,
@@ -356,7 +360,7 @@ export function Batches() {
       packaging_details: batch.packaging_details,
       import_price_usd: batch.import_price_usd || 0,
       exchange_rate_usd_to_idr: batch.exchange_rate_usd_to_idr || 0,
-      duty_percent: batch.duty_percent || 0,
+      duty_percent: productDutyPercent,
       duty_charges: batch.duty_charges,
       duty_charge_type: 'fixed',
       freight_charges: batch.freight_charges,

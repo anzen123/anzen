@@ -358,6 +358,18 @@ export function ExpenseManager({ canManage }: ExpenseManagerProps) {
 
   const handleEdit = (expense: FinanceExpense) => {
     setEditingExpense(expense);
+
+    // Check if expense is reconciled to a bank statement
+    const reconciledBankInfo = expense.bank_statement_lines && expense.bank_statement_lines.length > 0
+      ? expense.bank_statement_lines[0]
+      : null;
+
+    // Use reconciled bank info if available, otherwise use expense's own payment info
+    const effectiveBankAccountId = reconciledBankInfo?.bank_account_id || expense.bank_account_id || '';
+    const effectivePaymentMethod = reconciledBankInfo?.bank_account_id
+      ? 'bank_transfer'
+      : (expense.payment_method || 'cash');
+
     setFormData({
       expense_category: expense.expense_category,
       amount: expense.amount,
@@ -366,8 +378,8 @@ export function ExpenseManager({ canManage }: ExpenseManagerProps) {
       batch_id: expense.batch_id || '',
       import_container_id: expense.import_container_id || '',
       delivery_challan_id: expense.delivery_challan_id || '',
-      payment_method: expense.payment_method || 'cash',
-      bank_account_id: expense.bank_account_id || '',
+      payment_method: effectivePaymentMethod,
+      bank_account_id: effectiveBankAccountId,
       payment_reference: expense.payment_reference || '',
       document_urls: expense.document_urls || [],
     });
