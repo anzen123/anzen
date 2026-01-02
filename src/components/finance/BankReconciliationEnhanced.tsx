@@ -952,9 +952,7 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
               reconciliation_status: 'suggested',
               notes: `Auto-matched: ${matchedExpense.description}`,
             })
-            .eq('id', line.id)
-            .select()
-            .single();
+            .eq('id', line.id);
 
           if (updateError) {
             console.error(`Failed to update line ${line.id}:`, updateError);
