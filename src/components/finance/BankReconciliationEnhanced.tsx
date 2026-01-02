@@ -255,13 +255,26 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
             console.log(`Row ${i}:`, row);
           });
 
-          const { lines: parsedLines, metadata } = parseStatementDataWithMetadata(rows);
+          // Ask user for the year since CSV only has dd/MM format
+          const currentYear = new Date().getFullYear();
+          const userYear = prompt(`CSV contains dates without year (e.g., 01/12).\nWhich year is this statement for?`, String(currentYear - 1));
+          if (!userYear) {
+            alert('❌ Year is required to process the CSV');
+            return;
+          }
+          const statementYear = parseInt(userYear);
+          if (isNaN(statementYear) || statementYear < 2000 || statementYear > 2100) {
+            alert('❌ Invalid year provided');
+            return;
+          }
+
+          const { lines: parsedLines, metadata } = parseStatementDataWithMetadata(rows, statementYear);
 
           console.log('✅ Parsed lines:', parsedLines.length);
           console.log('📈 Metadata:', metadata);
 
           if (parsedLines.length === 0) {
-            alert('❌ No transactions found in the CSV file');
+            alert('❌ No transactions found in the CSV file. Check browser console for details.');
             return;
           }
 
@@ -607,7 +620,7 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
     }
   };
 
-  const parseStatementDataWithMetadata = (rows: any[][]): { lines: StatementLine[]; metadata: any } => {
+  const parseStatementDataWithMetadata = (rows: any[][], providedYear?: number): { lines: StatementLine[]; metadata: any } => {
     const lines: StatementLine[] = [];
     const metadata: any = {
       period: '',
@@ -619,7 +632,7 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
       totalCredits: 0,
     };
 
-    let year = new Date().getFullYear();
+    let year = providedYear || new Date().getFullYear();
     let month = new Date().getMonth() + 1;
 
     for (let i = 0; i < Math.min(10, rows.length); i++) {
@@ -692,6 +705,7 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
     });
 
     console.log('📍 Column positions:', { dateCol, descCol, branchCol, amountCol, debitCol, creditCol, balanceCol });
+    console.log('📋 Header row cells:', headerRow.map((cell, idx) => `[${idx}]: "${cell}"`));
 
     if (dateCol === -1) {
       console.error('❌ Missing date column');
@@ -771,6 +785,16 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
         const isDB = dbCrIndicator === 'DB' || amountStr.includes(' DB');
         const amount = parseIndonesianNumber(amountStr);
 
+        if (i < headerRowIdx + 3) {
+          console.log(`💰 Row ${i} amount parsing:`, {
+            amountStr,
+            dbCrIndicator,
+            isCR,
+            isDB,
+            amount
+          });
+        }
+
         if (isCR) {
           credit = amount;
         } else if (isDB || amount > 0) {
@@ -791,6 +815,16 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
         description = type + (details ? '; ' + details : '');
       }
       const branch = branchCol >= 0 ? String(row[branchCol] || '').trim() : '';
+
+      if (i < headerRowIdx + 3) {
+        console.log(`🔍 Row ${i} parsed:`, {
+          date: parsedDate,
+          debit,
+          credit,
+          balance,
+          description: description.substring(0, 50)
+        });
+      }
 
       lines.push({
         id: `temp-${i}`,
