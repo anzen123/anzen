@@ -36,6 +36,14 @@ interface ImportContainer {
   suppliers?: Supplier;
 }
 
+interface LinkedExpense {
+  id: string;
+  expense_category: string;
+  amount: number;
+  expense_date: string;
+  description: string | null;
+}
+
 export default function ImportContainers() {
   const { user } = useAuth();
   const [containers, setContainers] = useState<ImportContainer[]>([]);
@@ -43,6 +51,7 @@ export default function ImportContainers() {
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editingContainer, setEditingContainer] = useState<ImportContainer | null>(null);
+  const [linkedExpenses, setLinkedExpenses] = useState<LinkedExpense[]>([]);
   const [formData, setFormData] = useState({
     container_ref: '',
     supplier_id: '',
@@ -187,9 +196,41 @@ export default function ImportContainers() {
       other_import_costs: 0,
       notes: ''
     });
+    setLinkedExpenses([]);
   };
 
-  const handleEdit = (container: ImportContainer) => {
+  const loadLinkedExpenses = async (containerId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('finance_expenses')
+        .select('id, expense_category, amount, expense_date, description')
+        .eq('import_container_id', containerId)
+        .order('expense_date', { ascending: false });
+
+      if (error) throw error;
+      setLinkedExpenses(data || []);
+    } catch (error: any) {
+      console.error('Error loading linked expenses:', error);
+      setLinkedExpenses([]);
+    }
+  };
+
+  const getExpenseCategoryLabel = (category: string): string => {
+    const labels: Record<string, string> = {
+      duty_customs: 'Duty & Customs (BM)',
+      ppn_import: 'PPN Import',
+      pph_import: 'PPh Import',
+      freight_import: 'Freight (Import)',
+      clearing_forwarding: 'Clearing & Forwarding',
+      port_charges: 'Port Charges',
+      container_handling: 'Container Handling',
+      transport_import: 'Transportation (Import)',
+      loading_import: 'Loading / Unloading (Import)',
+    };
+    return labels[category] || category;
+  };
+
+  const handleEdit = async (container: ImportContainer) => {
     setEditingContainer(container);
     setFormData({
       container_ref: container.container_ref,
@@ -209,6 +250,10 @@ export default function ImportContainers() {
       other_import_costs: container.other_import_costs || 0,
       notes: container.notes || ''
     });
+
+    // Load linked expenses
+    await loadLinkedExpenses(container.id);
+
     setShowModal(true);
   };
 
@@ -581,6 +626,42 @@ export default function ImportContainers() {
                   </div>
                 </div>
               </div>
+
+              {editingContainer && linkedExpenses.length > 0 && (
+                <div className="bg-green-50 border-2 border-green-200 rounded-lg p-4">
+                  <h3 className="text-sm font-semibold text-green-900 mb-3">
+                    📎 Linked Expenses from Finance Tracker
+                  </h3>
+                  <div className="space-y-2 max-h-60 overflow-y-auto">
+                    {linkedExpenses.map((expense) => (
+                      <div key={expense.id} className="bg-white rounded p-3 flex justify-between items-center">
+                        <div className="flex-1">
+                          <div className="font-medium text-sm text-gray-900">
+                            {getExpenseCategoryLabel(expense.expense_category)}
+                          </div>
+                          <div className="text-xs text-gray-600">
+                            {expense.expense_date} • {expense.description || 'No description'}
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <div className="font-semibold text-green-700">
+                            {formatCurrency(expense.amount, 'IDR')}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="mt-3 pt-3 border-t border-green-300 flex justify-between items-center">
+                    <span className="text-sm font-semibold text-green-900">Total from Linked Expenses:</span>
+                    <span className="text-lg font-bold text-green-900">
+                      {formatCurrency(linkedExpenses.reduce((sum, exp) => sum + exp.amount, 0), 'IDR')}
+                    </span>
+                  </div>
+                  <p className="mt-2 text-xs text-green-700">
+                    💡 These expenses are automatically linked to this container. Add new expenses in the Finance &gt; Expense Manager and select this container.
+                  </p>
+                </div>
+              )}
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>

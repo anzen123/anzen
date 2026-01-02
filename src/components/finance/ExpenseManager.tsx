@@ -120,6 +120,14 @@ const expenseCategories = [
     requiresContainer: true
   },
   {
+    value: 'loading_import',
+    label: 'Loading / Unloading (Import)',
+    type: 'import',
+    icon: Truck,
+    description: 'Import container loading/unloading - CAPITALIZED to inventory',
+    requiresContainer: true
+  },
+  {
     value: 'delivery_sales',
     label: 'Delivery / Dispatch (Sales)',
     type: 'sales',
