@@ -124,7 +124,7 @@ export function BankReconciliation({ canManage }: BankReconciliationProps) {
           }
 
           const { data: { user } } = await supabase.auth.getUser();
-          
+
           const insertData = lines.map(line => ({
             bank_account_id: selectedBank,
             transaction_date: line.date,
@@ -137,15 +137,31 @@ export function BankReconciliation({ canManage }: BankReconciliationProps) {
             created_by: user?.id,
           }));
 
-          const { error } = await supabase
+          // Insert transactions, skip duplicates based on transaction_hash
+          const { data: inserted, error } = await supabase
             .from('bank_statement_lines')
-            .insert(insertData);
+            .upsert(insertData, {
+              onConflict: 'transaction_hash',
+              ignoreDuplicates: true
+            })
+            .select();
 
-          if (error) throw error;
+          if (error) {
+            console.error('Insert error:', error);
+            throw error;
+          }
+
+          const insertedCount = inserted?.length || 0;
+          const duplicateCount = lines.length - insertedCount;
 
           await autoMatchTransactions();
           loadStatementLines();
-          alert(`Successfully imported ${lines.length} transactions`);
+
+          if (duplicateCount > 0) {
+            alert(`Successfully imported ${insertedCount} new transactions.\n${duplicateCount} duplicate transactions were skipped.`);
+          } else {
+            alert(`Successfully imported ${insertedCount} transactions`);
+          }
         } catch (err: any) {
           console.error('Error parsing file:', err);
           alert('Failed to parse file: ' + err.message);
