@@ -913,8 +913,8 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
       // Load all potential matching sources
       const [expensesRes, payablesRes, receivablesRes, pettyCashRes] = await Promise.all([
         supabase.from('finance_expenses').select('id, expense_date, amount, description, voucher_number'),
-        supabase.from('payment_vouchers').select('id, voucher_date, amount, description, voucher_number, supplier_id, suppliers(name)'),
-        supabase.from('customer_payments').select('id, payment_date, amount, notes, payment_number, customer_id, customers(name)'),
+        supabase.from('payment_vouchers').select('id, voucher_date, amount, description, voucher_number, supplier_id, suppliers(company_name)'),
+        supabase.from('customer_payments').select('id, payment_date, amount, notes, payment_number, customer_id, customers(company_name)'),
         supabase.from('petty_cash_transactions').select('id, transaction_date, amount, description, transaction_number, transaction_type'),
       ]);
 
@@ -971,7 +971,7 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
                 .update({
                   matched_entry_id: payable.id,
                   reconciliation_status: 'suggested',
-                  notes: `Auto-matched: Payment to ${payable.suppliers?.name || 'Supplier'} - ${payable.description || ''}`,
+                  notes: `Auto-matched: Payment to ${payable.suppliers?.company_name || 'Supplier'} - ${payable.description || ''}`,
                 })
                 .eq('id', line.id);
               matched = true;
@@ -1014,7 +1014,7 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
               .update({
                 matched_receipt_id: receivable.id,
                 reconciliation_status: 'suggested',
-                notes: `Auto-matched: Receipt from ${receivable.customers?.name || 'Customer'} - ${receivable.notes || ''}`,
+                notes: `Auto-matched: Receipt from ${receivable.customers?.company_name || 'Customer'} - ${receivable.notes || ''}`,
               })
               .eq('id', line.id);
             matched = true;
