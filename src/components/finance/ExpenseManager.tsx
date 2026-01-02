@@ -160,6 +160,14 @@ const expenseCategories = [
     requiresContainer: false
   },
   {
+    value: 'bank_charges',
+    label: 'Bank Charges',
+    type: 'admin',
+    icon: DollarSign,
+    description: 'Bank fees, charges, and transaction costs - EXPENSED to P&L',
+    requiresContainer: false
+  },
+  {
     value: 'salary',
     label: 'Salary',
     type: 'admin',

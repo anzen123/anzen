@@ -72,6 +72,7 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
     { value: 'loading_sales', label: 'Loading', type: 'sales' },
     { value: 'warehouse_rent', label: 'Warehouse Rent', type: 'admin' },
     { value: 'utilities', label: 'Utilities', type: 'admin' },
+    { value: 'bank_charges', label: 'Bank Charges', type: 'admin' },
     { value: 'salary', label: 'Salary', type: 'admin' },
     { value: 'office_admin', label: 'Office & Admin', type: 'admin' },
   ];
