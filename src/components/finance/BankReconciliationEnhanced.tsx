@@ -99,7 +99,12 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
       if (error) throw error;
       setBankAccounts(data || []);
       if (data && data.length > 0) {
-        setSelectedBank(data[0].id);
+        const bcaAccount = data.find(
+          acc => acc.bank_name === 'BCA Bank' &&
+                 acc.account_number === '0930 2010 22' &&
+                 acc.currency === 'IDR'
+        );
+        setSelectedBank(bcaAccount?.id || data[0].id);
       }
     } catch (err) {
       console.error('Error loading bank accounts:', err);
