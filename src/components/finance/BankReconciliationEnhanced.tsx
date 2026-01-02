@@ -214,6 +214,15 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
       reader.onload = async (event) => {
         try {
           const text = event.target?.result as string;
+
+          // Auto-detect delimiter by checking first few lines
+          const firstLines = text.split('\n').slice(0, 5).join('\n');
+          const commaCount = (firstLines.match(/,/g) || []).length;
+          const semicolonCount = (firstLines.match(/;/g) || []).length;
+          const detectedDelimiter = commaCount > semicolonCount ? ',' : ';';
+
+          console.log(`📊 Detected delimiter: "${detectedDelimiter}" (commas: ${commaCount}, semicolons: ${semicolonCount})`);
+
           const rows: any[][] = [];
           let currentLine = '';
           let inQuotes = false;
@@ -226,7 +235,7 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
               currentLine += char;
             } else if (char === '\n' && !inQuotes) {
               if (currentLine.trim()) {
-                const cells = parseCSVLine(currentLine);
+                const cells = parseCSVLine(currentLine, detectedDelimiter);
                 rows.push(cells);
               }
               currentLine = '';
@@ -236,7 +245,7 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
           }
 
           if (currentLine.trim()) {
-            const cells = parseCSVLine(currentLine);
+            const cells = parseCSVLine(currentLine, detectedDelimiter);
             rows.push(cells);
           }
 
