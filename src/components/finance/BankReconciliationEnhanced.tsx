@@ -302,24 +302,18 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
             created_by: user?.id,
           }));
 
-          let insertedCount = 0;
-          let duplicateCount = 0;
+          const { data: inserted, error: insertError } = await supabase
+            .from('bank_statement_lines')
+            .upsert(insertData, {
+              onConflict: 'transaction_hash',
+              ignoreDuplicates: true
+            })
+            .select();
 
-          for (const record of insertData) {
-            const { error } = await supabase
-              .from('bank_statement_lines')
-              .insert(record);
+          if (insertError) throw insertError;
 
-            if (error) {
-              if (error.code === '23505') {
-                duplicateCount++;
-              } else {
-                throw error;
-              }
-            } else {
-              insertedCount++;
-            }
-          }
+          const insertedCount = inserted?.length || 0;
+          const duplicateCount = insertData.length - insertedCount;
 
           await loadStatementLines();
 
@@ -533,26 +527,20 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
             created_by: user?.id,
           }));
 
-          let insertedCount = 0;
-          let duplicateCount = 0;
+          const { data: inserted, error: insertError } = await supabase
+            .from('bank_statement_lines')
+            .upsert(insertData, {
+              onConflict: 'transaction_hash',
+              ignoreDuplicates: true
+            })
+            .select();
 
-          for (const record of insertData) {
-            const { error } = await supabase
-              .from('bank_statement_lines')
-              .insert(record);
+          if (insertError) throw insertError;
 
-            if (error) {
-              if (error.code === '23505') {
-                duplicateCount++;
-              } else {
-                throw error;
-              }
-            } else {
-              insertedCount++;
-            }
-          }
+          const insertedCount = inserted?.length || 0;
+          const duplicateCount = insertData.length - insertedCount;
 
-          loadStatementLines();
+          await loadStatementLines();
 
           if (insertedCount > 0) {
             await autoMatchTransactions();
