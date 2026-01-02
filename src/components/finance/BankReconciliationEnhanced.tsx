@@ -951,7 +951,7 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
               .from('bank_statement_lines')
               .update({
                 matched_expense_id: expense.id,
-                reconciliation_status: 'suggested',
+                reconciliation_status: 'matched',
                 notes: `Auto-matched: Expense - ${expense.description}`,
               })
               .eq('id', line.id);
@@ -970,7 +970,7 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
                 .from('bank_statement_lines')
                 .update({
                   matched_entry_id: payable.id,
-                  reconciliation_status: 'suggested',
+                  reconciliation_status: 'matched',
                   notes: `Auto-matched: Payment to ${payable.suppliers?.company_name || 'Supplier'} - ${payable.description || ''}`,
                 })
                 .eq('id', line.id);
@@ -991,7 +991,7 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
                 .from('bank_statement_lines')
                 .update({
                   matched_entry_id: pettyCash.id,
-                  reconciliation_status: 'suggested',
+                  reconciliation_status: 'matched',
                   notes: `Auto-matched: Petty Cash Withdrawal - ${pettyCash.description || ''}`,
                 })
                 .eq('id', line.id);
@@ -1013,7 +1013,7 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
               .from('bank_statement_lines')
               .update({
                 matched_receipt_id: receivable.id,
-                reconciliation_status: 'suggested',
+                reconciliation_status: 'matched',
                 notes: `Auto-matched: Receipt from ${receivable.customers?.company_name || 'Customer'} - ${receivable.notes || ''}`,
               })
               .eq('id', line.id);
@@ -1033,7 +1033,7 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
                 .from('bank_statement_lines')
                 .update({
                   matched_entry_id: pettyCash.id,
-                  reconciliation_status: 'suggested',
+                  reconciliation_status: 'matched',
                   notes: `Auto-matched: Petty Cash Deposit - ${pettyCash.description || ''}`,
                 })
                 .eq('id', line.id);
