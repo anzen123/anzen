@@ -913,9 +913,9 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
       // Load all potential matching sources
       const [expensesRes, payablesRes, receivablesRes, pettyCashRes] = await Promise.all([
         supabase.from('finance_expenses').select('id, expense_date, amount, description, voucher_number'),
-        supabase.from('finance_payables').select('id, payment_date, amount, description, voucher_number, supplier_id, suppliers(name)'),
-        supabase.from('finance_receivables').select('id, receipt_date, amount, description, voucher_number, customer_id, customers(name)'),
-        supabase.from('petty_cash').select('id, transaction_date, amount, description, voucher_number, transaction_type'),
+        supabase.from('payment_vouchers').select('id, voucher_date, amount, description, voucher_number, supplier_id, suppliers(name)'),
+        supabase.from('customer_payments').select('id, payment_date, amount, notes, payment_number, customer_id, customers(name)'),
+        supabase.from('petty_cash_transactions').select('id, transaction_date, amount, description, transaction_number, transaction_type'),
       ]);
 
       if (expensesRes.error) throw expensesRes.error;
@@ -984,7 +984,7 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
             const pettyCash = pettyCashList.find(pc =>
               pc.transaction_type === 'withdrawal' &&
               (Math.abs(pc.amount - amount) < 0.01 ||
-              (pc.voucher_number && line.description && line.description.includes(pc.voucher_number)))
+              (pc.transaction_number && line.description && line.description.includes(pc.transaction_number)))
             );
             if (pettyCash) {
               await supabase
@@ -1006,7 +1006,7 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
           // 1. Try match to Customer Receipts (Receivables)
           const receivable = receivablesList.find(rec =>
             Math.abs(rec.amount - amount) < 0.01 ||
-            (rec.voucher_number && line.description && line.description.includes(rec.voucher_number))
+            (rec.payment_number && line.description && line.description.includes(rec.payment_number))
           );
           if (receivable) {
             await supabase
@@ -1014,7 +1014,7 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
               .update({
                 matched_receipt_id: receivable.id,
                 reconciliation_status: 'suggested',
-                notes: `Auto-matched: Receipt from ${receivable.customers?.name || 'Customer'} - ${receivable.description || ''}`,
+                notes: `Auto-matched: Receipt from ${receivable.customers?.name || 'Customer'} - ${receivable.notes || ''}`,
               })
               .eq('id', line.id);
             matched = true;
@@ -1026,7 +1026,7 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
             const pettyCash = pettyCashList.find(pc =>
               pc.transaction_type === 'deposit' &&
               (Math.abs(pc.amount - amount) < 0.01 ||
-              (pc.voucher_number && line.description && line.description.includes(pc.voucher_number)))
+              (pc.transaction_number && line.description && line.description.includes(pc.transaction_number)))
             );
             if (pettyCash) {
               await supabase
