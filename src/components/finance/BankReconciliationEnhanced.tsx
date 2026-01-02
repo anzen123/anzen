@@ -56,6 +56,8 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
     credit: 0,
     description: '',
   });
+  const [deletePreview, setDeletePreview] = useState<any>(null);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
 
   const expenseCategories = [
     { value: 'duty_customs', label: 'Duty & Customs (BM)', type: 'import' },
@@ -286,15 +288,34 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
             created_by: user?.id,
           }));
 
-          const { error } = await supabase
-            .from('bank_statement_lines')
-            .insert(insertData);
+          let insertedCount = 0;
+          let duplicateCount = 0;
 
-          if (error) throw error;
+          for (const record of insertData) {
+            const { error } = await supabase
+              .from('bank_statement_lines')
+              .insert(record);
+
+            if (error) {
+              if (error.code === '23505') {
+                duplicateCount++;
+              } else {
+                throw error;
+              }
+            } else {
+              insertedCount++;
+            }
+          }
 
           await autoMatchTransactions();
           await loadStatementLines();
-          alert(`✅ Successfully imported ${parsedLines.length} transactions`);
+
+          let message = `✅ Import complete!\n`;
+          message += `   Imported: ${insertedCount} transaction(s)\n`;
+          if (duplicateCount > 0) {
+            message += `   Skipped (duplicates): ${duplicateCount} transaction(s)`;
+          }
+          alert(message);
         } catch (err: any) {
           console.error('CSV parsing error:', err);
           alert(`❌ Error parsing CSV: ${err.message}`);
@@ -385,7 +406,12 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
       }
 
       const ocrUsed = result.usedOCR ? ' (via OCR)' : '';
-      alert(`✅ Successfully imported ${result.transactionCount} transactions from ${result.period}${ocrUsed}`);
+      let message = `✅ Import complete from ${result.period}${ocrUsed}\n`;
+      message += `   Imported: ${result.insertedCount || result.transactionCount} transaction(s)`;
+      if (result.duplicateCount > 0) {
+        message += `\n   Skipped (duplicates): ${result.duplicateCount} transaction(s)`;
+      }
+      alert(message);
       setOcrError(null);
       setLastUploadedFile(null);
       await autoMatchTransactions();
@@ -490,15 +516,34 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
             created_by: user?.id,
           }));
 
-          const { error } = await supabase
-            .from('bank_statement_lines')
-            .insert(insertData);
+          let insertedCount = 0;
+          let duplicateCount = 0;
 
-          if (error) throw error;
+          for (const record of insertData) {
+            const { error } = await supabase
+              .from('bank_statement_lines')
+              .insert(record);
+
+            if (error) {
+              if (error.code === '23505') {
+                duplicateCount++;
+              } else {
+                throw error;
+              }
+            } else {
+              insertedCount++;
+            }
+          }
 
           await autoMatchTransactions();
           loadStatementLines();
-          alert(`✅ Successfully imported ${lines.length} transactions`);
+
+          let message = `✅ Import complete!\n`;
+          message += `   Imported: ${insertedCount} transaction(s)\n`;
+          if (duplicateCount > 0) {
+            message += `   Skipped (duplicates): ${duplicateCount} transaction(s)`;
+          }
+          alert(message);
         } catch (err: any) {
           console.error('Error parsing file:', err);
           alert('❌ Failed to parse file: ' + err.message);
@@ -842,29 +887,46 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
     }
   };
 
-  const clearAllReconciliationData = async () => {
+  const previewClearData = async () => {
     if (!selectedBank) return;
 
-    const confirmed = confirm(
-      '⚠️ WARNING: This will delete ALL reconciliation data for this bank account.\n\n' +
-      'This includes:\n' +
-      '- All statement lines\n' +
-      '- All matches and links\n' +
-      '\nAre you sure you want to proceed?'
-    );
-
-    if (!confirmed) return;
-
     try {
-      const { error } = await supabase
-        .from('bank_statement_lines')
-        .delete()
-        .eq('bank_account_id', selectedBank);
+      const { data, error } = await supabase.rpc('preview_bank_statement_delete', {
+        p_bank_account_id: selectedBank,
+        p_start_date: dateRange.start,
+        p_end_date: dateRange.end,
+      });
 
       if (error) throw error;
 
-      alert('✅ All reconciliation data cleared successfully');
-      loadStatementLines();
+      setDeletePreview(data);
+      setShowDeleteModal(true);
+    } catch (err: any) {
+      console.error('Error previewing delete:', err);
+      alert('❌ Failed to preview: ' + err.message);
+    }
+  };
+
+  const executeClearData = async () => {
+    if (!selectedBank || !deletePreview) return;
+
+    try {
+      const { data, error } = await supabase.rpc('safe_delete_bank_statement_lines', {
+        p_bank_account_id: selectedBank,
+        p_start_date: dateRange.start,
+        p_end_date: dateRange.end,
+      });
+
+      if (error) throw error;
+
+      if (data.success) {
+        alert(`✅ Successfully deleted ${data.deleted_count} unmatched transaction(s)`);
+        setShowDeleteModal(false);
+        setDeletePreview(null);
+        await loadStatementLines();
+      } else {
+        alert(`❌ ${data.error}`);
+      }
     } catch (err: any) {
       console.error('Error clearing data:', err);
       alert('❌ Failed to clear data: ' + err.message);
@@ -1089,10 +1151,10 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
             {canManage && (
               <>
                 <button
-                  onClick={clearAllReconciliationData}
+                  onClick={previewClearData}
                   disabled={!selectedBank}
                   className="flex items-center gap-1 px-3 py-1.5 text-sm bg-red-100 text-red-700 rounded-lg hover:bg-red-200 disabled:opacity-50"
-                  title="Clear all reconciliation data for this account"
+                  title="Clear reconciliation data for selected date range"
                 >
                   <XCircle className="w-4 h-4" />
                   Clear Data
@@ -1644,6 +1706,103 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
           </div>
         </Modal>
       )}
+
+      {/* Delete Confirmation Modal */}
+      <Modal
+        isOpen={showDeleteModal}
+        onClose={() => {
+          setShowDeleteModal(false);
+          setDeletePreview(null);
+        }}
+        title="Confirm Clear Data"
+      >
+        {deletePreview && (
+          <div className="space-y-4">
+            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+              <h4 className="font-medium text-yellow-900 mb-2">Warning: Data Deletion</h4>
+              <p className="text-sm text-yellow-800">
+                You are about to clear bank statement data. This action cannot be undone.
+              </p>
+            </div>
+
+            <div className="bg-gray-50 border rounded-lg p-4 space-y-3">
+              <div>
+                <div className="text-xs text-gray-600 mb-1">Bank Account</div>
+                <div className="font-medium text-gray-900">
+                  {deletePreview.bank_info?.bank_name} - {deletePreview.bank_info?.account_number}
+                  <span className="ml-2 px-2 py-0.5 bg-blue-100 text-blue-700 rounded text-xs">
+                    {deletePreview.bank_info?.currency}
+                  </span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <div className="text-xs text-gray-600 mb-1">Date Range</div>
+                  <div className="text-sm font-medium text-gray-900">
+                    {new Date(deletePreview.start_date).toLocaleDateString('id-ID')} -
+                    {' '}{new Date(deletePreview.end_date).toLocaleDateString('id-ID')}
+                  </div>
+                </div>
+
+                <div>
+                  <div className="text-xs text-gray-600 mb-1">Total Transactions</div>
+                  <div className="text-2xl font-bold text-gray-900">
+                    {deletePreview.total_count}
+                  </div>
+                </div>
+              </div>
+
+              <div className="border-t pt-3 grid grid-cols-2 gap-4">
+                <div>
+                  <div className="text-xs text-red-600 font-medium mb-1">Reconciled (Protected)</div>
+                  <div className="text-lg font-bold text-red-600">
+                    {deletePreview.reconciled_count}
+                  </div>
+                  <div className="text-xs text-gray-500">Cannot be deleted</div>
+                </div>
+
+                <div>
+                  <div className="text-xs text-gray-600 font-medium mb-1">Unmatched (Deletable)</div>
+                  <div className="text-lg font-bold text-gray-900">
+                    {deletePreview.unmatched_count}
+                  </div>
+                  <div className="text-xs text-gray-500">Will be deleted</div>
+                </div>
+              </div>
+            </div>
+
+            {deletePreview.warning && (
+              <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+                <p className="text-sm text-red-800 font-medium">
+                  {deletePreview.warning}
+                </p>
+              </div>
+            )}
+
+            <div className="flex justify-end gap-3 pt-4">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowDeleteModal(false);
+                  setDeletePreview(null);
+                }}
+                className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={executeClearData}
+                disabled={!deletePreview.can_delete}
+                className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {deletePreview.can_delete ? `Delete ${deletePreview.unmatched_count} Transaction(s)` : 'Cannot Delete'}
+              </button>
+            </div>
+          </div>
+        )}
+      </Modal>
 
       {/* Edit Bank Statement Line Modal */}
       <Modal

@@ -180,24 +180,40 @@ Deno.serve(async (req: Request) => {
       debit_amount: txn.debitAmount,
       credit_amount: txn.creditAmount,
       running_balance: txn.balance,
+      statement_balance: txn.balance,
       currency: bankAccount.currency,
       reconciliation_status: 'unmatched',
       created_by: user.id,
     }));
 
-    const { error: linesError } = await supabase
-      .from('bank_statement_lines')
-      .insert(lines);
+    let insertedCount = 0;
+    let duplicateCount = 0;
 
-    if (linesError) {
-      throw new Error('Failed to insert transactions: ' + linesError.message);
+    for (const line of lines) {
+      const { error: lineError } = await supabase
+        .from('bank_statement_lines')
+        .insert(line);
+
+      if (lineError) {
+        if (lineError.code === '23505') {
+          duplicateCount++;
+        } else {
+          console.error('[ERROR] Failed to insert line:', lineError);
+        }
+      } else {
+        insertedCount++;
+      }
     }
+
+    console.log(`[INFO] Inserted ${insertedCount} transactions, skipped ${duplicateCount} duplicates`);
 
     return new Response(
       JSON.stringify({
         success: true,
         uploadId: upload.id,
         transactionCount: parsed.transactions.length,
+        insertedCount,
+        duplicateCount,
         period: parsed.period,
         openingBalance: parsed.openingBalance,
         closingBalance: parsed.closingBalance,
