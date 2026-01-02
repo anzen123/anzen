@@ -302,21 +302,24 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
             created_by: user?.id,
           }));
 
-          const { data: inserted, error: insertError } = await supabase
-            .from('bank_statement_lines')
-            .upsert(insertData, {
-              onConflict: 'transaction_hash',
-              ignoreDuplicates: true
-            })
-            .select();
+          let insertedCount = 0;
+          let duplicateCount = 0;
 
-          if (insertError) {
-            console.error('Insert error:', insertError);
-            throw insertError;
+          for (const record of insertData) {
+            const { error } = await supabase
+              .from('bank_statement_lines')
+              .insert(record);
+
+            if (error) {
+              if (error.code === '23505') {
+                duplicateCount++;
+              } else {
+                throw error;
+              }
+            } else {
+              insertedCount++;
+            }
           }
-
-          const insertedCount = inserted?.length || 0;
-          const duplicateCount = insertData.length - insertedCount;
 
           await autoMatchTransactions();
           await loadStatementLines();
