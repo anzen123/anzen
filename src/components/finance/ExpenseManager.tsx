@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
-import { Plus, DollarSign, Package, Truck, Building2, Edit, Trash2, FileText, Upload, X, ExternalLink } from 'lucide-react';
+import { Plus, DollarSign, Package, Truck, Building2, Edit, Trash2, FileText, Upload, X, ExternalLink, Download } from 'lucide-react';
 import { Modal } from '../Modal';
 import { FileUpload } from '../FileUpload';
 
@@ -198,6 +198,8 @@ export function ExpenseManager({ canManage }: ExpenseManagerProps) {
   const [filterType, setFilterType] = useState<'all' | 'import' | 'sales' | 'admin'>('all');
   const [reconFilter, setReconFilter] = useState<'all' | 'reconciled' | 'not_reconciled'>('all');
   const [uploadingFiles, setUploadingFiles] = useState<File[]>([]);
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
 
   const [formData, setFormData] = useState({
     expense_category: 'other',
@@ -454,13 +456,50 @@ export function ExpenseManager({ canManage }: ExpenseManagerProps) {
 
     // Filter by reconciliation status
     if (reconFilter === 'reconciled') {
-      return reconciledExpenseIds.has(exp.id);
+      if (!reconciledExpenseIds.has(exp.id)) return false;
     } else if (reconFilter === 'not_reconciled') {
-      return !reconciledExpenseIds.has(exp.id);
+      if (reconciledExpenseIds.has(exp.id)) return false;
     }
+
+    // Filter by date range
+    if (startDate && exp.expense_date < startDate) return false;
+    if (endDate && exp.expense_date > endDate) return false;
 
     return true;
   });
+
+  const exportToCSV = () => {
+    if (filteredExpenses.length === 0) {
+      alert('No expenses to export');
+      return;
+    }
+
+    const headers = ['Date', 'Category', 'Description', 'Amount'];
+    const rows = filteredExpenses.map(exp => {
+      const category = expenseCategories.find(c => c.value === exp.expense_category);
+      return [
+        exp.expense_date,
+        category?.label || exp.expense_category,
+        exp.description || '',
+        exp.amount.toString()
+      ];
+    });
+
+    const csvContent = [
+      headers.join(','),
+      ...rows.map(row => row.map(cell => `"${cell}"`).join(','))
+    ].join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', `expenses_${startDate || 'all'}_to_${endDate || 'all'}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
 
   const getTypeColor = (type: string) => {
     switch (type) {
@@ -537,6 +576,44 @@ export function ExpenseManager({ canManage }: ExpenseManagerProps) {
               {filter.label} ({filter.count})
             </button>
           ))}
+        </div>
+
+        <div className="flex gap-3 items-center bg-gray-50 p-3 rounded-lg">
+          <span className="text-sm font-medium text-gray-700">Date Filter:</span>
+          <input
+            type="date"
+            value={startDate}
+            onChange={(e) => setStartDate(e.target.value)}
+            placeholder="Start Date"
+            className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm"
+          />
+          <span className="text-gray-500">to</span>
+          <input
+            type="date"
+            value={endDate}
+            onChange={(e) => setEndDate(e.target.value)}
+            placeholder="End Date"
+            className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm"
+          />
+          {(startDate || endDate) && (
+            <button
+              onClick={() => {
+                setStartDate('');
+                setEndDate('');
+              }}
+              className="px-3 py-1.5 bg-gray-200 text-gray-700 rounded-lg text-sm hover:bg-gray-300"
+            >
+              Clear
+            </button>
+          )}
+          <button
+            onClick={exportToCSV}
+            disabled={filteredExpenses.length === 0}
+            className="ml-auto px-4 py-1.5 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center gap-2"
+          >
+            <Download className="w-4 h-4" />
+            Export to CSV ({filteredExpenses.length})
+          </button>
         </div>
       </div>
 

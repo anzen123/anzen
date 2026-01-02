@@ -321,8 +321,11 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
             }
           }
 
-          await autoMatchTransactions();
           await loadStatementLines();
+
+          if (insertedCount > 0) {
+            await autoMatchTransactions();
+          }
 
           let message = `✅ Import complete!\n`;
           message += `   Imported: ${insertedCount} transaction(s)\n`;
@@ -549,8 +552,11 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
             }
           }
 
-          await autoMatchTransactions();
           loadStatementLines();
+
+          if (insertedCount > 0) {
+            await autoMatchTransactions();
+          }
 
           let message = `✅ Import complete!\n`;
           message += `   Imported: ${insertedCount} transaction(s)\n`;
