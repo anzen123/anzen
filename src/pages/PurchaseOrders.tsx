@@ -681,16 +681,15 @@ export default function PurchaseOrders() {
             title={editingPO ? 'Edit Purchase Order' : 'New Purchase Order'}
             maxWidth="max-w-6xl"
           >
-            <form onSubmit={handleSubmit} className="space-y-6">
-              <div className="grid grid-cols-3 gap-4">
+            <form onSubmit={handleSubmit} className="space-y-4">
+              {/* Header Section - Compact */}
+              <div className="grid grid-cols-3 gap-3">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Supplier *
-                  </label>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Supplier *</label>
                   <select
                     value={formData.supplier_id}
                     onChange={(e) => setFormData({ ...formData, supplier_id: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                    className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500"
                     required
                   >
                     <option value="">Select Supplier</option>
@@ -702,193 +701,213 @@ export default function PurchaseOrders() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">PO Date</label>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">PO Date</label>
                   <input
                     type="date"
                     value={formData.po_date}
                     onChange={(e) => setFormData({ ...formData, po_date: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                    className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500"
                     required
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Expected Delivery</label>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Expected Delivery</label>
                   <input
                     type="date"
                     value={formData.expected_delivery_date}
                     onChange={(e) => setFormData({ ...formData, expected_delivery_date: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                    className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500"
                   />
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Currency</label>
+              {/* Currency and Payment Terms - Compact */}
+              <div className="grid grid-cols-6 gap-3">
+                <div className="col-span-1">
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Currency</label>
                   <select
                     value={formData.currency}
                     onChange={(e) => setFormData({ ...formData, currency: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                    className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500"
                   >
                     <option value="IDR">IDR</option>
                     <option value="USD">USD</option>
                   </select>
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Payment Terms</label>
-                  <input
-                    type="text"
+                <div className="col-span-5">
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Payment Terms</label>
+                  <select
                     value={formData.payment_terms}
                     onChange={(e) => setFormData({ ...formData, payment_terms: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-                    placeholder="e.g., Net 30"
-                  />
+                    className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500"
+                    required
+                  >
+                    <option value="Net 7">Net 7</option>
+                    <option value="Net 15">Net 15</option>
+                    <option value="Net 30">Net 30</option>
+                    <option value="Net 45">Net 45</option>
+                    <option value="Net 60">Net 60</option>
+                    <option value="Net 90">Net 90</option>
+                    <option value="Advance">Advance Payment</option>
+                    <option value="50-50">50% Advance & 50% on Delivery</option>
+                    <option value="COD">Cash on Delivery</option>
+                  </select>
                 </div>
               </div>
 
-              {/* Items */}
+              {/* Items - Compact Table */}
               <div>
-                <div className="flex justify-between items-center mb-3">
-                  <label className="block text-sm font-medium text-gray-700">Items</label>
+                <div className="flex justify-between items-center mb-2">
+                  <label className="block text-xs font-semibold text-gray-700">Items</label>
                   <button
                     type="button"
                     onClick={addPOItem}
-                    className="text-sm text-blue-600 hover:text-blue-800"
+                    className="text-xs text-blue-600 hover:text-blue-800 font-medium"
                   >
                     + Add Item
                   </button>
                 </div>
 
-                <div className="space-y-3 overflow-x-auto">
-                  {poItems.map((item, index) => (
-                    <div key={index} className="grid grid-cols-12 gap-2 items-end min-w-max">
-                      <div className="col-span-2">
-                        <label className="block text-xs text-gray-600 mb-1">Product</label>
-                        <select
-                          value={item.product_id}
-                          onChange={(e) => handleProductChange(index, e.target.value)}
-                          className="w-full px-2 py-1 text-sm border border-gray-300 rounded"
-                          required
-                        >
-                          <option value="">Select</option>
-                          {products.map((product) => (
-                            <option key={product.id} value={product.id}>
-                              {product.product_name}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                      <div className="col-span-2">
-                        <label className="block text-xs text-gray-600 mb-1">Specification</label>
-                        <input
-                          type="text"
-                          value={item.specification || ''}
-                          onChange={(e) => {
-                            const newItems = [...poItems];
-                            newItems[index].specification = e.target.value;
-                            setPOItems(newItems);
-                          }}
-                          className="w-full px-2 py-1 text-sm border border-gray-300 rounded"
-                          placeholder="Product specs"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs text-gray-600 mb-1">COA No.</label>
-                        <input
-                          type="text"
-                          value={item.coa_code || ''}
-                          onChange={(e) => {
-                            const newItems = [...poItems];
-                            newItems[index].coa_code = e.target.value;
-                            setPOItems(newItems);
-                          }}
-                          className="w-full px-2 py-1 text-sm border border-gray-300 rounded"
-                          placeholder="COA"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs text-gray-600 mb-1">Qty</label>
-                        <input
-                          type="number"
-                          value={item.quantity}
-                          onChange={(e) => {
-                            const newItems = [...poItems];
-                            newItems[index].quantity = parseFloat(e.target.value) || 0;
-                            calculateLineTotal(index, newItems);
-                            setPOItems(newItems);
-                          }}
-                          className="w-full px-2 py-1 text-sm border border-gray-300 rounded"
-                          required
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs text-gray-600 mb-1">Unit</label>
-                        <input
-                          type="text"
-                          value={item.unit}
-                          readOnly
-                          className="w-full px-2 py-1 text-sm border border-gray-300 rounded bg-gray-50"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs text-gray-600 mb-1">Price</label>
-                        <input
-                          type="number"
-                          value={item.unit_price}
-                          onChange={(e) => {
-                            const newItems = [...poItems];
-                            newItems[index].unit_price = parseFloat(e.target.value) || 0;
-                            calculateLineTotal(index, newItems);
-                            setPOItems(newItems);
-                          }}
-                          className="w-full px-2 py-1 text-sm border border-gray-300 rounded"
-                          required
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs text-gray-600 mb-1">Disc %</label>
-                        <input
-                          type="number"
-                          value={item.discount_percent}
-                          onChange={(e) => {
-                            const newItems = [...poItems];
-                            newItems[index].discount_percent = parseFloat(e.target.value) || 0;
-                            calculateLineTotal(index, newItems);
-                            setPOItems(newItems);
-                          }}
-                          className="w-full px-2 py-1 text-sm border border-gray-300 rounded"
-                        />
-                      </div>
-                      <div className="col-span-2">
-                        <label className="block text-xs text-gray-600 mb-1">Total</label>
-                        <input
-                          type="text"
-                          value={formatCurrency(item.line_total, formData.currency)}
-                          readOnly
-                          className="w-full px-2 py-1 text-sm border border-gray-300 rounded bg-gray-50"
-                        />
-                      </div>
-                      <div>
-                        {poItems.length > 1 && (
-                          <button
-                            type="button"
-                            onClick={() => removePOItem(index)}
-                            className="text-red-600 hover:text-red-800 p-1"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  ))}
+                {/* Compact table with minimal spacing */}
+                <div className="border border-gray-300 rounded overflow-x-auto">
+                  <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-2 py-1.5 text-left text-xs font-medium text-gray-600 whitespace-nowrap" style={{width: '180px'}}>Product</th>
+                        <th className="px-2 py-1.5 text-left text-xs font-medium text-gray-600 whitespace-nowrap" style={{width: '120px'}}>Specification</th>
+                        <th className="px-2 py-1.5 text-left text-xs font-medium text-gray-600 whitespace-nowrap" style={{width: '80px'}}>COA No</th>
+                        <th className="px-2 py-1.5 text-left text-xs font-medium text-gray-600 whitespace-nowrap" style={{width: '60px'}}>Qty</th>
+                        <th className="px-2 py-1.5 text-left text-xs font-medium text-gray-600 whitespace-nowrap" style={{width: '50px'}}>Unit</th>
+                        <th className="px-2 py-1.5 text-left text-xs font-medium text-gray-600 whitespace-nowrap" style={{width: '90px'}}>Price</th>
+                        <th className="px-2 py-1.5 text-left text-xs font-medium text-gray-600 whitespace-nowrap" style={{width: '50px'}}>Disc%</th>
+                        <th className="px-2 py-1.5 text-left text-xs font-medium text-gray-600 whitespace-nowrap" style={{width: '100px'}}>Total</th>
+                        <th className="px-2 py-1.5 text-center text-xs font-medium text-gray-600" style={{width: '40px'}}></th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                      {poItems.map((item, index) => (
+                        <tr key={index} className="hover:bg-gray-50">
+                          <td className="px-2 py-1">
+                            <select
+                              value={item.product_id}
+                              onChange={(e) => handleProductChange(index, e.target.value)}
+                              className="w-full px-1.5 py-1 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-blue-500"
+                              required
+                            >
+                              <option value="">Select</option>
+                              {products.map((product) => (
+                                <option key={product.id} value={product.id}>
+                                  {product.product_name}
+                                </option>
+                              ))}
+                            </select>
+                          </td>
+                          <td className="px-2 py-1">
+                            <input
+                              type="text"
+                              value={item.specification || ''}
+                              onChange={(e) => {
+                                const newItems = [...poItems];
+                                newItems[index].specification = e.target.value;
+                                setPOItems(newItems);
+                              }}
+                              className="w-full px-1.5 py-1 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-blue-500"
+                              placeholder="Specs"
+                            />
+                          </td>
+                          <td className="px-2 py-1">
+                            <input
+                              type="text"
+                              value={item.coa_code || ''}
+                              onChange={(e) => {
+                                const newItems = [...poItems];
+                                newItems[index].coa_code = e.target.value;
+                                setPOItems(newItems);
+                              }}
+                              className="w-full px-1.5 py-1 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-blue-500"
+                              placeholder="COA"
+                            />
+                          </td>
+                          <td className="px-2 py-1">
+                            <input
+                              type="number"
+                              value={item.quantity}
+                              onChange={(e) => {
+                                const newItems = [...poItems];
+                                newItems[index].quantity = parseFloat(e.target.value) || 0;
+                                calculateLineTotal(index, newItems);
+                                setPOItems(newItems);
+                              }}
+                              className="w-full px-1.5 py-1 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 text-right"
+                              required
+                            />
+                          </td>
+                          <td className="px-2 py-1">
+                            <input
+                              type="text"
+                              value={item.unit}
+                              className="w-full px-1.5 py-1 text-xs border border-gray-300 rounded bg-gray-50"
+                              readOnly
+                            />
+                          </td>
+                          <td className="px-2 py-1">
+                            <input
+                              type="number"
+                              value={item.unit_price}
+                              onChange={(e) => {
+                                const newItems = [...poItems];
+                                newItems[index].unit_price = parseFloat(e.target.value) || 0;
+                                calculateLineTotal(index, newItems);
+                                setPOItems(newItems);
+                              }}
+                              className="w-full px-1.5 py-1 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 text-right"
+                              required
+                            />
+                          </td>
+                          <td className="px-2 py-1">
+                            <input
+                              type="number"
+                              value={item.discount_percent}
+                              onChange={(e) => {
+                                const newItems = [...poItems];
+                                newItems[index].discount_percent = parseFloat(e.target.value) || 0;
+                                calculateLineTotal(index, newItems);
+                                setPOItems(newItems);
+                              }}
+                              className="w-full px-1.5 py-1 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 text-right"
+                            />
+                          </td>
+                          <td className="px-2 py-1">
+                            <input
+                              type="text"
+                              value={formatCurrency(item.line_total, formData.currency)}
+                              readOnly
+                              className="w-full px-1.5 py-1 text-xs border border-gray-300 rounded bg-gray-50 text-right font-medium"
+                            />
+                          </td>
+                          <td className="px-2 py-1 text-center">
+                            {poItems.length > 1 && (
+                              <button
+                                type="button"
+                                onClick={() => removePOItem(index)}
+                                className="text-red-600 hover:text-red-800 p-0.5"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
               </div>
 
-              {/* Totals */}
-              <div className="border-t pt-4">
+              {/* Totals - Compact */}
+              <div className="border-t pt-2">
                 <div className="flex justify-end">
-                  <div className="w-64 space-y-2">
-                    <div className="flex justify-between text-lg font-bold border-t pt-2">
+                  <div className="w-56">
+                    <div className="flex justify-between text-base font-bold bg-gray-50 px-3 py-2 rounded">
                       <span>Total:</span>
                       <span>{formatCurrency(calculateTotals().total, formData.currency)}</span>
                     </div>
@@ -897,12 +916,13 @@ export default function PurchaseOrders() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Notes</label>
                 <textarea
                   value={formData.notes}
                   onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                  rows={3}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                  rows={2}
+                  className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500"
+                  placeholder="Additional notes or instructions..."
                 />
               </div>
 
