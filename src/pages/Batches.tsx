@@ -222,7 +222,8 @@ export function Batches() {
         return amount;
       };
 
-      const dutyAmount = calculateCharge(formData.duty_charges, formData.duty_charge_type, importPriceIDR);
+      // Calculate duty from duty_percent (Form A1)
+      const dutyAmount = (importPriceIDR * formData.duty_percent) / 100;
       const freightAmount = calculateCharge(formData.freight_charges, formData.freight_charge_type, importPriceIDR);
       const otherAmount = calculateCharge(formData.other_charges, formData.other_charge_type, importPriceIDR);
 
@@ -239,7 +240,7 @@ export function Batches() {
         exchange_rate_usd_to_idr: formData.exchange_rate_usd_to_idr || null,
         duty_percent: formData.duty_percent || 0,
         duty_charges: dutyAmount,
-        duty_charge_type: formData.duty_charge_type,
+        duty_charge_type: 'percentage',
         freight_charges: freightAmount,
         freight_charge_type: formData.freight_charge_type,
         other_charges: otherAmount,
@@ -486,7 +487,7 @@ export function Batches() {
       return amount;
     };
 
-    const dutyAmount = calculateCharge(formData.duty_charges, formData.duty_charge_type);
+    const dutyAmount = (importPriceIDR * formData.duty_percent) / 100;
     const freightAmount = calculateCharge(formData.freight_charges, formData.freight_charge_type);
     const otherAmount = calculateCharge(formData.other_charges, formData.other_charge_type);
 
@@ -999,72 +1000,31 @@ export function Batches() {
             </div>
 
             <div className="border-b pb-3">
-              <h3 className="text-sm font-semibold text-gray-900 mb-2">Import Duty (Form A1)</h3>
-              <div className="grid grid-cols-2 gap-3 mb-3">
-                <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">
-                    Duty % (Form A1) *
-                  </label>
-                  <input
-                    type="number"
-                    value={formData.duty_percent}
-                    onChange={(e) => setFormData({ ...formData, duty_percent: Number(e.target.value) })}
-                    className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500"
-                    min="0"
-                    max="100"
-                    step="0.01"
-                    placeholder="Auto-filled from product"
-                  />
-                  <p className="text-xs text-gray-500 mt-0.5">Auto-filled from product, can override</p>
-                </div>
-                {formData.import_price_usd > 0 && formData.exchange_rate_usd_to_idr > 0 && formData.duty_percent > 0 && (
-                  <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">
-                      Calculated Duty Amount
-                    </label>
-                    <div className="px-2 py-1.5 text-sm bg-blue-50 border border-blue-200 rounded">
-                      <span className="font-semibold text-blue-900">
-                        {formatCurrency((formData.import_price_usd * formData.exchange_rate_usd_to_idr * formData.duty_percent) / 100)}
-                      </span>
-                      <p className="text-xs text-blue-700 mt-0.5">
-                        {formData.duty_percent}% of {formatCurrency(formData.import_price_usd * formData.exchange_rate_usd_to_idr)}
-                      </p>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <div className="border-b pb-3">
               <h3 className="text-sm font-semibold text-gray-900 mb-2">Additional Charges</h3>
               <div className="space-y-3">
                 <div className="grid grid-cols-[1fr_1fr_1fr] gap-2">
                   <div>
                     <label className="block text-xs font-medium text-gray-700 mb-1">
-                      Duty (Old)
+                      Duty (Form A1 %)
                     </label>
                     <div className="flex gap-0.5">
                       <input
                         type="number"
-                        value={formData.duty_charges === 0 ? '' : formData.duty_charges}
-                        onChange={(e) => setFormData({ ...formData, duty_charges: e.target.value === '' ? 0 : Number(e.target.value) })}
+                        value={formData.duty_percent === 0 ? '' : formData.duty_percent}
+                        onChange={(e) => setFormData({ ...formData, duty_percent: e.target.value === '' ? 0 : Number(e.target.value) })}
                         className="flex-1 px-1.5 py-1 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-blue-500"
                         min="0"
+                        max="100"
                         step="0.01"
-                        placeholder="0"
+                        placeholder="Auto from product"
                       />
-                      <select
-                        value={formData.duty_charge_type}
-                        onChange={(e) => setFormData({ ...formData, duty_charge_type: e.target.value as 'percentage' | 'fixed' })}
-                        className="w-12 px-0.5 py-1 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 bg-white"
-                      >
-                        <option value="percentage">%</option>
-                        <option value="fixed">Rp</option>
-                      </select>
+                      <div className="w-12 px-0.5 py-1 text-xs border border-gray-300 rounded bg-gray-50 flex items-center justify-center">
+                        %
+                      </div>
                     </div>
-                    {formData.duty_charges > 0 && (
+                    {formData.duty_percent > 0 && formData.import_price_usd > 0 && formData.exchange_rate_usd_to_idr > 0 && (
                       <p className="text-xs text-gray-600 mt-0.5">
-                        = {formatCurrency(getChargeAmount(formData.duty_charges, formData.duty_charge_type))}
+                        = {formatCurrency((formData.import_price_usd * formData.exchange_rate_usd_to_idr * formData.duty_percent) / 100)}
                       </p>
                     )}
                   </div>
@@ -1142,11 +1102,11 @@ export function Batches() {
                   </span>
                 </div>
                 <div className="flex justify-between">
-                  <span>Duty Charges:</span>
+                  <span>Duty (Form A1):</span>
                   <span className="font-medium">
-                    {formatCurrency(getChargeAmount(formData.duty_charges, formData.duty_charge_type))}
-                    {formData.duty_charge_type === 'percentage' && formData.duty_charges > 0 && (
-                      <span className="text-xs ml-1">({formData.duty_charges}%)</span>
+                    {formatCurrency((formData.import_price_usd * formData.exchange_rate_usd_to_idr * formData.duty_percent) / 100)}
+                    {formData.duty_percent > 0 && (
+                      <span className="text-xs ml-1">({formData.duty_percent}%)</span>
                     )}
                   </span>
                 </div>
