@@ -310,16 +310,13 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
             })
             .select();
 
-          if (insertError) throw insertError;
+          if (insertError) {
+            console.error('Upsert error:', insertError);
+            throw insertError;
+          }
 
           const insertedCount = inserted?.length || 0;
           const duplicateCount = insertData.length - insertedCount;
-
-          await loadStatementLines();
-
-          if (insertedCount > 0) {
-            await autoMatchTransactions();
-          }
 
           let message = `✅ Import complete!\n`;
           message += `   Imported: ${insertedCount} transaction(s)\n`;
@@ -327,6 +324,20 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
             message += `   Skipped (duplicates): ${duplicateCount} transaction(s)`;
           }
           alert(message);
+
+          try {
+            await loadStatementLines();
+          } catch (loadError) {
+            console.error('Load statement lines error:', loadError);
+          }
+
+          if (insertedCount > 0) {
+            try {
+              await autoMatchTransactions();
+            } catch (matchError) {
+              console.error('Auto-match error:', matchError);
+            }
+          }
         } catch (err: any) {
           console.error('CSV parsing error:', err);
           alert(`❌ Error parsing CSV: ${err.message}`);
@@ -425,8 +436,21 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
       alert(message);
       setOcrError(null);
       setLastUploadedFile(null);
-      await autoMatchTransactions();
-      loadStatementLines();
+
+      try {
+        await loadStatementLines();
+      } catch (loadError) {
+        console.error('Load statement lines error:', loadError);
+      }
+
+      const insertedCount = result.insertedCount || result.transactionCount || 0;
+      if (insertedCount > 0) {
+        try {
+          await autoMatchTransactions();
+        } catch (matchError) {
+          console.error('Auto-match error:', matchError);
+        }
+      }
     } catch (error: any) {
       console.error('PDF upload error:', error);
       alert(`❌ Failed to parse PDF: ${error.message}`);
@@ -535,16 +559,13 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
             })
             .select();
 
-          if (insertError) throw insertError;
+          if (insertError) {
+            console.error('Upsert error:', insertError);
+            throw insertError;
+          }
 
           const insertedCount = inserted?.length || 0;
           const duplicateCount = insertData.length - insertedCount;
-
-          await loadStatementLines();
-
-          if (insertedCount > 0) {
-            await autoMatchTransactions();
-          }
 
           let message = `✅ Import complete!\n`;
           message += `   Imported: ${insertedCount} transaction(s)\n`;
@@ -552,6 +573,20 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
             message += `   Skipped (duplicates): ${duplicateCount} transaction(s)`;
           }
           alert(message);
+
+          try {
+            await loadStatementLines();
+          } catch (loadError) {
+            console.error('Load statement lines error:', loadError);
+          }
+
+          if (insertedCount > 0) {
+            try {
+              await autoMatchTransactions();
+            } catch (matchError) {
+              console.error('Auto-match error:', matchError);
+            }
+          }
         } catch (err: any) {
           console.error('Error parsing file:', err);
           alert('❌ Failed to parse file: ' + err.message);
@@ -829,7 +864,7 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
 
       if (linesError) throw linesError;
       if (!lines || lines.length === 0) {
-        alert('No unmatched transactions to process');
+        console.log('No unmatched transactions to process');
         return;
       }
 
@@ -840,7 +875,7 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
 
       if (expError) throw expError;
       if (!expensesList || expensesList.length === 0) {
-        alert('No expenses found to match against');
+        console.log('No expenses found to match against');
         return;
       }
 
