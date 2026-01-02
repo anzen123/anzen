@@ -906,64 +906,148 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
 
       if (linesError) throw linesError;
       if (!lines || lines.length === 0) {
-        console.log('No unmatched transactions to process');
+        alert('No unmatched transactions to process');
         return;
       }
 
-      // Load expenses
-      const { data: expensesList, error: expError } = await supabase
-        .from('finance_expenses')
-        .select('id, expense_date, amount, description, voucher_number');
+      // Load all potential matching sources
+      const [expensesRes, payablesRes, receivablesRes, pettyCashRes] = await Promise.all([
+        supabase.from('finance_expenses').select('id, expense_date, amount, description, voucher_number'),
+        supabase.from('finance_payables').select('id, payment_date, amount, description, voucher_number, supplier_id, suppliers(name)'),
+        supabase.from('finance_receivables').select('id, receipt_date, amount, description, voucher_number, customer_id, customers(name)'),
+        supabase.from('petty_cash').select('id, transaction_date, amount, description, voucher_number, transaction_type'),
+      ]);
 
-      if (expError) throw expError;
-      if (!expensesList || expensesList.length === 0) {
-        console.log('No expenses found to match against');
-        return;
-      }
+      if (expensesRes.error) throw expensesRes.error;
+      if (payablesRes.error) throw payablesRes.error;
+      if (receivablesRes.error) throw receivablesRes.error;
+      if (pettyCashRes.error) throw pettyCashRes.error;
+
+      const expensesList = expensesRes.data || [];
+      const payablesList = payablesRes.data || [];
+      const receivablesList = receivablesRes.data || [];
+      const pettyCashList = pettyCashRes.data || [];
 
       let matchCount = 0;
+      let debitMatched = 0;
+      let creditMatched = 0;
 
       for (const line of lines) {
-        const amount = line.debit_amount || line.credit_amount || 0;
+        const isDebit = line.debit_amount > 0;
+        const isCredit = line.credit_amount > 0;
+        const amount = isDebit ? line.debit_amount : line.credit_amount;
 
-        // Try to find matching expense
-        let matchedExpense = null;
+        let matched = false;
 
-        // 1. Try match by amount (exact match within 0.01)
-        matchedExpense = expensesList.find(exp =>
-          Math.abs(exp.amount - amount) < 0.01
-        );
+        // DEBIT = Money OUT from bank
+        if (isDebit) {
+          // 1. Try match to Expenses
+          const expense = expensesList.find(exp =>
+            Math.abs(exp.amount - amount) < 0.01 ||
+            (exp.voucher_number && line.description && line.description.includes(exp.voucher_number))
+          );
+          if (expense) {
+            await supabase
+              .from('bank_statement_lines')
+              .update({
+                matched_expense_id: expense.id,
+                reconciliation_status: 'suggested',
+                notes: `Auto-matched: Expense - ${expense.description}`,
+              })
+              .eq('id', line.id);
+            matched = true;
+            debitMatched++;
+          }
 
-        // 2. If no match, try by voucher number in description
-        if (!matchedExpense && line.description) {
-          for (const exp of expensesList) {
-            if (exp.voucher_number && line.description.includes(exp.voucher_number)) {
-              matchedExpense = exp;
-              break;
+          // 2. Try match to Supplier Payments (Payables)
+          if (!matched) {
+            const payable = payablesList.find(pay =>
+              Math.abs(pay.amount - amount) < 0.01 ||
+              (pay.voucher_number && line.description && line.description.includes(pay.voucher_number))
+            );
+            if (payable) {
+              await supabase
+                .from('bank_statement_lines')
+                .update({
+                  matched_entry_id: payable.id,
+                  reconciliation_status: 'suggested',
+                  notes: `Auto-matched: Payment to ${payable.suppliers?.name || 'Supplier'} - ${payable.description || ''}`,
+                })
+                .eq('id', line.id);
+              matched = true;
+              debitMatched++;
+            }
+          }
+
+          // 3. Try match to Petty Cash Withdrawal
+          if (!matched) {
+            const pettyCash = pettyCashList.find(pc =>
+              pc.transaction_type === 'withdrawal' &&
+              (Math.abs(pc.amount - amount) < 0.01 ||
+              (pc.voucher_number && line.description && line.description.includes(pc.voucher_number)))
+            );
+            if (pettyCash) {
+              await supabase
+                .from('bank_statement_lines')
+                .update({
+                  matched_entry_id: pettyCash.id,
+                  reconciliation_status: 'suggested',
+                  notes: `Auto-matched: Petty Cash Withdrawal - ${pettyCash.description || ''}`,
+                })
+                .eq('id', line.id);
+              matched = true;
+              debitMatched++;
             }
           }
         }
 
-        if (matchedExpense) {
-          const { error: updateError } = await supabase
-            .from('bank_statement_lines')
-            .update({
-              matched_expense_id: matchedExpense.id,
-              reconciliation_status: 'suggested',
-              notes: `Auto-matched: ${matchedExpense.description}`,
-            })
-            .eq('id', line.id);
+        // CREDIT = Money IN to bank
+        if (isCredit && !matched) {
+          // 1. Try match to Customer Receipts (Receivables)
+          const receivable = receivablesList.find(rec =>
+            Math.abs(rec.amount - amount) < 0.01 ||
+            (rec.voucher_number && line.description && line.description.includes(rec.voucher_number))
+          );
+          if (receivable) {
+            await supabase
+              .from('bank_statement_lines')
+              .update({
+                matched_receipt_id: receivable.id,
+                reconciliation_status: 'suggested',
+                notes: `Auto-matched: Receipt from ${receivable.customers?.name || 'Customer'} - ${receivable.description || ''}`,
+              })
+              .eq('id', line.id);
+            matched = true;
+            creditMatched++;
+          }
 
-          if (updateError) {
-            console.error(`Failed to update line ${line.id}:`, updateError);
-          } else {
-            matchCount++;
+          // 2. Try match to Petty Cash Deposit/Return
+          if (!matched) {
+            const pettyCash = pettyCashList.find(pc =>
+              pc.transaction_type === 'deposit' &&
+              (Math.abs(pc.amount - amount) < 0.01 ||
+              (pc.voucher_number && line.description && line.description.includes(pc.voucher_number)))
+            );
+            if (pettyCash) {
+              await supabase
+                .from('bank_statement_lines')
+                .update({
+                  matched_entry_id: pettyCash.id,
+                  reconciliation_status: 'suggested',
+                  notes: `Auto-matched: Petty Cash Deposit - ${pettyCash.description || ''}`,
+                })
+                .eq('id', line.id);
+              matched = true;
+              creditMatched++;
+            }
           }
         }
+
+        if (matched) matchCount++;
       }
 
       await loadStatementLines();
-      alert(`✅ Auto-match complete!\nMatched ${matchCount} out of ${lines.length} transactions`);
+      alert(`✅ Auto-match complete!\n\nMatched: ${matchCount} / ${lines.length}\n- Debits (OUT): ${debitMatched}\n- Credits (IN): ${creditMatched}`);
     } catch (err: any) {
       console.error('Error auto-matching:', err);
       alert('❌ Auto-match failed: ' + err.message);
