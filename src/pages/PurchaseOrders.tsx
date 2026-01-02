@@ -576,6 +576,7 @@ export default function PurchaseOrders() {
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">PO Number</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Supplier</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Products</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Total Amount</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
@@ -592,6 +593,30 @@ export default function PurchaseOrders() {
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                     {po.suppliers?.company_name}
+                  </td>
+                  <td className="px-6 py-4 text-sm text-gray-600">
+                    <div className="flex flex-col gap-1 max-w-xs">
+                      {po.purchase_order_items && po.purchase_order_items.length > 0 ? (
+                        <>
+                          {po.purchase_order_items.slice(0, 2).map((item, idx) => (
+                            <div key={idx} className="flex items-center gap-1 text-xs">
+                              <Package className="w-3 h-3 text-blue-500 flex-shrink-0" />
+                              <span className="truncate">
+                                {item.products?.product_name || item.description}
+                                <span className="text-gray-400 ml-1">×{item.quantity}</span>
+                              </span>
+                            </div>
+                          ))}
+                          {po.purchase_order_items.length > 2 && (
+                            <span className="text-xs text-gray-400 italic">
+                              +{po.purchase_order_items.length - 2} more
+                            </span>
+                          )}
+                        </>
+                      ) : (
+                        <span className="text-gray-400 text-xs italic">No items</span>
+                      )}
+                    </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-medium">
                     {formatCurrency(po.total_amount, po.currency)}

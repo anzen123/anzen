@@ -69,6 +69,7 @@ export function PettyCashManager({ canManage }: PettyCashManagerProps) {
     bank_account_id: '',
     paid_to: '',
     paid_by_staff_name: '',
+    paid_by: 'cash' as 'cash' | 'bank',
     source: '',
     received_by_staff_name: '',
   });
@@ -158,13 +159,13 @@ export function PettyCashManager({ canManage }: PettyCashManagerProps) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (formData.amount <= 0) {
       alert('Amount must be greater than 0');
       return;
     }
 
-    if (formData.transaction_type === 'expense' && formData.amount > cashBalance) {
+    if (formData.transaction_type === 'expense' && formData.paid_by === 'cash' && formData.amount > cashBalance) {
       alert('Insufficient cash balance. Please add funds first.');
       return;
     }
@@ -173,6 +174,34 @@ export function PettyCashManager({ canManage }: PettyCashManagerProps) {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
+      // If expense is paid by bank, create finance_expense instead
+      if (formData.transaction_type === 'expense' && formData.paid_by === 'bank') {
+        const expenseData = {
+          expense_category: formData.expense_category || 'other',
+          expense_type: 'admin',
+          amount: formData.amount,
+          expense_date: formData.transaction_date,
+          description: `${formData.description} (Paid to: ${formData.paid_to})`,
+          payment_method: 'bank_transfer',
+          bank_account_id: formData.bank_account_id || null,
+          paid_by: 'bank',
+          created_by: user.id,
+        };
+
+        const { error: expenseError } = await supabase
+          .from('finance_expenses')
+          .insert([expenseData]);
+
+        if (expenseError) throw expenseError;
+
+        alert('Expense moved to Expense Tracker for Bank Reconciliation');
+        setModalOpen(false);
+        resetForm();
+        loadData();
+        return;
+      }
+
+      // Otherwise, create petty cash transaction as normal
       const transactionNumber = await generateTransactionNumber(formData.transaction_type);
 
       const payload: any = {
@@ -181,6 +210,7 @@ export function PettyCashManager({ canManage }: PettyCashManagerProps) {
         transaction_type: formData.transaction_type,
         amount: formData.amount,
         description: formData.description,
+        paid_by: formData.paid_by,
         created_by: user.id,
       };
 
@@ -250,6 +280,7 @@ export function PettyCashManager({ canManage }: PettyCashManagerProps) {
       bank_account_id: '',
       paid_to: '',
       paid_by_staff_name: '',
+      paid_by: 'cash',
       source: '',
       received_by_staff_name: '',
     });
@@ -580,6 +611,23 @@ export function PettyCashManager({ canManage }: PettyCashManagerProps) {
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500"
                     placeholder="Staff member name"
                   />
+                </div>
+                <div className="col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Payment Source *</label>
+                  <select
+                    value={formData.paid_by}
+                    onChange={(e) => setFormData({ ...formData, paid_by: e.target.value as 'cash' | 'bank' })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 font-medium"
+                    required
+                  >
+                    <option value="cash">💵 Cash (→ Petty Cash)</option>
+                    <option value="bank">🏦 Bank (→ Expense Tracker)</option>
+                  </select>
+                  <p className="text-xs text-gray-600 mt-1">
+                    {formData.paid_by === 'cash'
+                      ? '✓ Will be recorded in Petty Cash'
+                      : '✓ Will move to Expense Tracker for Bank Reconciliation'}
+                  </p>
                 </div>
                 <div className="col-span-2">
                   <label className="block text-sm font-medium text-gray-700 mb-1">Purpose / Description *</label>
