@@ -158,24 +158,7 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
     try {
       const { data, error } = await supabase
         .from('bank_statement_lines')
-        .select(`
-          *,
-          matched_expense:finance_expenses!bank_statement_lines_matched_expense_id_fkey(
-            id,
-            expense_category,
-            amount,
-            description,
-            expense_date,
-            voucher_number
-          ),
-          matched_receipt:receipt_vouchers!bank_statement_lines_matched_receipt_id_fkey(
-            id,
-            amount,
-            payment_date,
-            payment_number,
-            customers(company_name)
-          )
-        `)
+        .select('*')
         .eq('bank_account_id', selectedBank)
         .gte('transaction_date', dateRange.start)
         .lte('transaction_date', dateRange.end)
@@ -183,26 +166,60 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
 
       if (error) throw error;
 
-      const lines: StatementLine[] = (data || []).map(row => ({
-        id: row.id,
-        date: row.transaction_date,
-        description: row.description || '',
-        reference: row.reference || '',
-        debit: row.debit_amount || 0,
-        credit: row.credit_amount || 0,
-        balance: row.running_balance || 0,
-        currency: row.currency || 'IDR',
-        status: row.reconciliation_status || 'unmatched',
-        matchedEntry: row.matched_entry_id,
-        matchedExpenseId: row.matched_expense_id,
-        matchedReceiptId: row.matched_receipt_id,
-        matchedExpense: row.matched_expense,
-        matchedReceipt: row.matched_receipt ? {
-          ...row.matched_receipt,
-          customer_name: row.matched_receipt.customers?.company_name
-        } : null,
-        notes: row.notes,
+      const lines: StatementLine[] = await Promise.all((data || []).map(async row => {
+        let matchedExpense = null;
+        let matchedReceipt = null;
+
+        if (row.matched_expense_id) {
+          const { data: expenseData } = await supabase
+            .from('finance_expenses')
+            .select('id, expense_category, amount, description, expense_date, voucher_number')
+            .eq('id', row.matched_expense_id)
+            .single();
+          matchedExpense = expenseData;
+        }
+
+        if (row.matched_receipt_id) {
+          const { data: receiptData } = await supabase
+            .from('receipt_vouchers')
+            .select('id, amount, payment_date, payment_number, customer_id')
+            .eq('id', row.matched_receipt_id)
+            .single();
+
+          if (receiptData && receiptData.customer_id) {
+            const { data: customerData } = await supabase
+              .from('customers')
+              .select('company_name')
+              .eq('id', receiptData.customer_id)
+              .single();
+            matchedReceipt = {
+              ...receiptData,
+              customer_name: customerData?.company_name
+            };
+          } else {
+            matchedReceipt = receiptData;
+          }
+        }
+
+        return {
+          id: row.id,
+          date: row.transaction_date,
+          description: row.description || '',
+          reference: row.reference || '',
+          debit: row.debit_amount || 0,
+          credit: row.credit_amount || 0,
+          balance: row.running_balance || 0,
+          currency: row.currency || 'IDR',
+          status: row.reconciliation_status || 'unmatched',
+          matchedEntry: row.matched_entry_id,
+          matchedExpenseId: row.matched_expense_id,
+          matchedReceiptId: row.matched_receipt_id,
+          matchedExpense,
+          matchedReceipt,
+          notes: row.notes,
+        };
       }));
+
       setStatementLines(lines);
     } catch (err) {
       console.error('Error loading statement lines:', err);
