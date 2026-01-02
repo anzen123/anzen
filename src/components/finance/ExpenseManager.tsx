@@ -220,6 +220,7 @@ export function ExpenseManager({ canManage }: ExpenseManagerProps) {
     payment_method: 'cash',
     bank_account_id: '',
     payment_reference: '',
+    paid_by: 'bank' as 'bank' | 'cash',
     document_urls: [] as string[],
   });
 
@@ -336,6 +337,7 @@ export function ExpenseManager({ canManage }: ExpenseManagerProps) {
         payment_method: formData.payment_method,
         bank_account_id: formData.bank_account_id || null,
         payment_reference: formData.payment_reference || null,
+        paid_by: formData.paid_by,
         document_urls: allDocumentUrls.length > 0 ? allDocumentUrls : null,
       };
 
@@ -399,6 +401,7 @@ export function ExpenseManager({ canManage }: ExpenseManagerProps) {
       payment_method: effectivePaymentMethod,
       bank_account_id: effectiveBankAccountId,
       payment_reference: expense.payment_reference || '',
+      paid_by: (expense as any).paid_by || 'bank',
       document_urls: expense.document_urls || [],
     });
     setModalOpen(true);
@@ -447,6 +450,7 @@ export function ExpenseManager({ canManage }: ExpenseManagerProps) {
       payment_method: 'cash',
       bank_account_id: '',
       payment_reference: '',
+      paid_by: 'bank',
       document_urls: [],
     });
   };
@@ -905,6 +909,31 @@ export function ExpenseManager({ canManage }: ExpenseManagerProps) {
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Paid By <span className="text-red-500">*</span>
+                  </label>
+                  <select
+                    value={formData.paid_by}
+                    onChange={(e) => {
+                      const paidBy = e.target.value as 'bank' | 'cash';
+                      setFormData({
+                        ...formData,
+                        paid_by: paidBy,
+                        payment_method: paidBy === 'cash' ? 'cash' : 'bank_transfer',
+                        bank_account_id: paidBy === 'cash' ? '' : formData.bank_account_id
+                      });
+                    }}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg font-medium"
+                    required
+                  >
+                    <option value="bank">🏦 Bank (Expense Tracker)</option>
+                    <option value="cash">💵 Cash (Petty Cash)</option>
+                  </select>
+                  <p className="text-xs text-gray-600 mt-1">
+                    {formData.paid_by === 'bank' ? 'Will appear in Bank Reconciliation' : 'Will go to Petty Cash'}
+                  </p>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
                     Payment Method <span className="text-red-500">*</span>
                   </label>
                   <select
@@ -912,6 +941,7 @@ export function ExpenseManager({ canManage }: ExpenseManagerProps) {
                     onChange={(e) => setFormData({ ...formData, payment_method: e.target.value, bank_account_id: e.target.value === 'cash' ? '' : formData.bank_account_id })}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg"
                     required
+                    disabled={formData.paid_by === 'cash'}
                   >
                     <option value="cash">Cash</option>
                     <option value="bank_transfer">Bank Transfer</option>
