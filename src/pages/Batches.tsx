@@ -21,6 +21,7 @@ interface Batch {
   import_price_usd: number | null;
   exchange_rate_usd_to_idr: number | null;
   duty_charges: number;
+  duty_percent: number | null;
   freight_charges: number;
   other_charges: number;
   expiry_date: string;
@@ -45,6 +46,7 @@ interface Product {
   product_name: string;
   product_code: string;
   unit: string;
+  duty_percent: number;
 }
 
 interface ImportContainer {
@@ -85,6 +87,7 @@ export function Batches() {
     import_price_usd: 0,
     exchange_rate_usd_to_idr: 0,
     duty_charges: 0,
+    duty_percent: 0,
     duty_charge_type: 'fixed' as 'percentage' | 'fixed',
     freight_charges: 0,
     freight_charge_type: 'fixed' as 'percentage' | 'fixed',
@@ -137,7 +140,7 @@ export function Batches() {
     try {
       const { data, error } = await supabase
         .from('products')
-        .select('id, product_name, product_code, unit')
+        .select('id, product_name, product_code, unit, duty_percent')
         .eq('is_active', true)
         .order('product_name');
 
@@ -234,6 +237,7 @@ export function Batches() {
         import_price: importPriceIDR,
         import_price_usd: formData.import_price_usd || null,
         exchange_rate_usd_to_idr: formData.exchange_rate_usd_to_idr || null,
+        duty_percent: formData.duty_percent || 0,
         duty_charges: dutyAmount,
         duty_charge_type: formData.duty_charge_type,
         freight_charges: freightAmount,
@@ -351,6 +355,7 @@ export function Batches() {
       packaging_details: batch.packaging_details,
       import_price_usd: batch.import_price_usd || 0,
       exchange_rate_usd_to_idr: batch.exchange_rate_usd_to_idr || 0,
+      duty_percent: batch.duty_percent || 0,
       duty_charges: batch.duty_charges,
       duty_charge_type: 'fixed',
       freight_charges: batch.freight_charges,
@@ -446,6 +451,7 @@ export function Batches() {
       packaging_details: '',
       import_price_usd: 0,
       exchange_rate_usd_to_idr: 0,
+      duty_percent: 0,
       duty_charges: 0,
       duty_charge_type: 'fixed',
       freight_charges: 0,
@@ -752,14 +758,21 @@ export function Batches() {
                   </label>
                   <select
                     value={formData.product_id}
-                    onChange={(e) => setFormData({ ...formData, product_id: e.target.value })}
+                    onChange={(e) => {
+                      const selectedProduct = products.find(p => p.id === e.target.value);
+                      setFormData({
+                        ...formData,
+                        product_id: e.target.value,
+                        duty_percent: selectedProduct?.duty_percent || 0
+                      });
+                    }}
                     className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500"
                     required
                   >
                     <option value="">Select Product</option>
                     {products.map((product) => (
                       <option key={product.id} value={product.id}>
-                        {product.product_name} ({product.product_code})
+                        {product.product_name}{product.product_code ? ` (${product.product_code})` : ''}
                       </option>
                     ))}
                   </select>
@@ -986,12 +999,49 @@ export function Batches() {
             </div>
 
             <div className="border-b pb-3">
+              <h3 className="text-sm font-semibold text-gray-900 mb-2">Import Duty (Form A1)</h3>
+              <div className="grid grid-cols-2 gap-3 mb-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">
+                    Duty % (Form A1) *
+                  </label>
+                  <input
+                    type="number"
+                    value={formData.duty_percent}
+                    onChange={(e) => setFormData({ ...formData, duty_percent: Number(e.target.value) })}
+                    className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500"
+                    min="0"
+                    max="100"
+                    step="0.01"
+                    placeholder="Auto-filled from product"
+                  />
+                  <p className="text-xs text-gray-500 mt-0.5">Auto-filled from product, can override</p>
+                </div>
+                {formData.import_price_usd > 0 && formData.exchange_rate_usd_to_idr > 0 && formData.duty_percent > 0 && (
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">
+                      Calculated Duty Amount
+                    </label>
+                    <div className="px-2 py-1.5 text-sm bg-blue-50 border border-blue-200 rounded">
+                      <span className="font-semibold text-blue-900">
+                        {formatCurrency((formData.import_price_usd * formData.exchange_rate_usd_to_idr * formData.duty_percent) / 100)}
+                      </span>
+                      <p className="text-xs text-blue-700 mt-0.5">
+                        {formData.duty_percent}% of {formatCurrency(formData.import_price_usd * formData.exchange_rate_usd_to_idr)}
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="border-b pb-3">
               <h3 className="text-sm font-semibold text-gray-900 mb-2">Additional Charges</h3>
               <div className="space-y-3">
                 <div className="grid grid-cols-[1fr_1fr_1fr] gap-2">
                   <div>
                     <label className="block text-xs font-medium text-gray-700 mb-1">
-                      Duty
+                      Duty (Old)
                     </label>
                     <div className="flex gap-0.5">
                       <input
