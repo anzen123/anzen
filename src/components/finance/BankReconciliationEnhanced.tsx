@@ -318,10 +318,11 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
           const insertedCount = inserted?.length || 0;
           const duplicateCount = insertData.length - insertedCount;
 
-          let message = `✅ Import complete!\n`;
-          message += `   Imported: ${insertedCount} transaction(s)\n`;
+          let message = `✅ CSV Import complete!\n`;
+          message += `   Total processed: ${insertData.length} transaction(s)\n`;
+          message += `   New transactions: ${insertedCount}\n`;
           if (duplicateCount > 0) {
-            message += `   Skipped (duplicates): ${duplicateCount} transaction(s)`;
+            message += `   Already in database: ${duplicateCount}`;
           }
           alert(message);
 
@@ -342,6 +343,10 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
           console.error('CSV parsing error:', err);
           alert(`❌ Error parsing CSV: ${err.message}`);
         }
+      };
+      reader.onerror = () => {
+        console.error('FileReader error');
+        alert('❌ Failed to read CSV file');
       };
       reader.readAsText(file);
     } catch (error: any) {
@@ -369,6 +374,8 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
       } else {
         await handleExcelUpload(file);
       }
+    } catch (uploadError) {
+      console.error('File upload error:', uploadError);
     } finally {
       setUploading(false);
       if (fileInputRef.current) {
@@ -567,10 +574,11 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
           const insertedCount = inserted?.length || 0;
           const duplicateCount = insertData.length - insertedCount;
 
-          let message = `✅ Import complete!\n`;
-          message += `   Imported: ${insertedCount} transaction(s)\n`;
+          let message = `✅ CSV Import complete!\n`;
+          message += `   Total processed: ${insertData.length} transaction(s)\n`;
+          message += `   New transactions: ${insertedCount}\n`;
           if (duplicateCount > 0) {
-            message += `   Skipped (duplicates): ${duplicateCount} transaction(s)`;
+            message += `   Already in database: ${duplicateCount}`;
           }
           alert(message);
 
