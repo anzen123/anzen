@@ -23,6 +23,24 @@ interface StatementLine {
   currency: string;
   status: 'matched' | 'suggested' | 'unmatched' | 'recorded';
   matchedEntry?: string;
+  matchedExpenseId?: string;
+  matchedReceiptId?: string;
+  matchedExpense?: {
+    id: string;
+    expense_category: string;
+    amount: number;
+    description: string;
+    expense_date: string;
+    voucher_number?: string;
+  } | null;
+  matchedReceipt?: {
+    id: string;
+    amount: number;
+    payment_date: string;
+    payment_number: string;
+    customer_name?: string;
+  } | null;
+  notes?: string;
 }
 
 interface BankReconciliationEnhancedProps {
@@ -140,7 +158,24 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
     try {
       const { data, error } = await supabase
         .from('bank_statement_lines')
-        .select('*')
+        .select(`
+          *,
+          matched_expense:finance_expenses!bank_statement_lines_matched_expense_id_fkey(
+            id,
+            expense_category,
+            amount,
+            description,
+            expense_date,
+            voucher_number
+          ),
+          matched_receipt:receipt_vouchers!bank_statement_lines_matched_receipt_id_fkey(
+            id,
+            amount,
+            payment_date,
+            payment_number,
+            customers(company_name)
+          )
+        `)
         .eq('bank_account_id', selectedBank)
         .gte('transaction_date', dateRange.start)
         .lte('transaction_date', dateRange.end)
@@ -159,6 +194,14 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
         currency: row.currency || 'IDR',
         status: row.reconciliation_status || 'unmatched',
         matchedEntry: row.matched_entry_id,
+        matchedExpenseId: row.matched_expense_id,
+        matchedReceiptId: row.matched_receipt_id,
+        matchedExpense: row.matched_expense,
+        matchedReceipt: row.matched_receipt ? {
+          ...row.matched_receipt,
+          customer_name: row.matched_receipt.customers?.company_name
+        } : null,
+        notes: row.notes,
       }));
       setStatementLines(lines);
     } catch (err) {
@@ -1291,6 +1334,42 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
     }
   };
 
+  const handleUnlinkTransaction = async () => {
+    if (!editingLine) return;
+
+    const confirmUnlink = window.confirm(
+      'Are you sure you want to unlink this transaction?\n\n' +
+      'This will set its status back to "Unmatched" and remove the link to the expense/receipt.'
+    );
+
+    if (!confirmUnlink) return;
+
+    try {
+      const { error } = await supabase
+        .from('bank_statement_lines')
+        .update({
+          matched_expense_id: null,
+          matched_receipt_id: null,
+          matched_entry_id: null,
+          reconciliation_status: 'unmatched',
+          matched_at: null,
+          matched_by: null,
+          notes: null,
+        })
+        .eq('id', editingLine.id);
+
+      if (error) throw error;
+
+      setEditModal(false);
+      setEditingLine(null);
+      await loadStatementLines();
+      alert('✅ Transaction unlinked successfully');
+    } catch (error: any) {
+      console.error('Error unlinking transaction:', error);
+      alert('❌ ' + error.message);
+    }
+  };
+
   return (
     <div className="space-y-4">
       <div className="bg-white border rounded-lg p-4">
@@ -1992,7 +2071,131 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
                   <div className="font-medium font-mono text-sm">{editingLine.reference}</div>
                 </>
               )}
+              <div className="text-sm text-gray-600 mt-2 mb-1">Status:</div>
+              <div className="inline-flex items-center gap-1.5">
+                {editingLine.status === 'matched' && (
+                  <>
+                    <CheckCircle2 className="w-4 h-4 text-green-600" />
+                    <span className="text-green-700 font-medium">Matched</span>
+                  </>
+                )}
+                {editingLine.status === 'recorded' && (
+                  <>
+                    <CheckCircle2 className="w-4 h-4 text-green-600" />
+                    <span className="text-green-700 font-medium">Recorded</span>
+                  </>
+                )}
+                {editingLine.status === 'suggested' && (
+                  <>
+                    <AlertCircle className="w-4 h-4 text-yellow-600" />
+                    <span className="text-yellow-700 font-medium">Suggested</span>
+                  </>
+                )}
+                {editingLine.status === 'unmatched' && (
+                  <>
+                    <XCircle className="w-4 h-4 text-gray-400" />
+                    <span className="text-gray-600 font-medium">Unmatched</span>
+                  </>
+                )}
+              </div>
             </div>
+
+            {(editingLine.matchedExpense || editingLine.matchedReceipt) && (
+              <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                <div className="flex items-start justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <FileText className="w-5 h-5 text-blue-600" />
+                    <h4 className="font-semibold text-blue-900">Linked Transaction</h4>
+                  </div>
+                  {canManage && (
+                    <button
+                      type="button"
+                      onClick={handleUnlinkTransaction}
+                      className="text-sm text-red-600 hover:text-red-700 font-medium"
+                    >
+                      Unlink
+                    </button>
+                  )}
+                </div>
+
+                {editingLine.matchedExpense && (
+                  <div className="space-y-2 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Type:</span>
+                      <span className="font-medium text-gray-900">Expense</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Category:</span>
+                      <span className="font-medium text-gray-900">
+                        {expenseCategories.find(c => c.value === editingLine.matchedExpense?.expense_category)?.label || editingLine.matchedExpense.expense_category}
+                      </span>
+                    </div>
+                    {editingLine.matchedExpense.voucher_number && (
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">Voucher:</span>
+                        <span className="font-medium text-gray-900 font-mono">{editingLine.matchedExpense.voucher_number}</span>
+                      </div>
+                    )}
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Amount:</span>
+                      <span className="font-medium text-gray-900">
+                        {editingLine.currency === 'USD' ? '$' : 'Rp'} {editingLine.matchedExpense.amount.toLocaleString('id-ID')}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Date:</span>
+                      <span className="font-medium text-gray-900">
+                        {new Date(editingLine.matchedExpense.expense_date).toLocaleDateString('id-ID')}
+                      </span>
+                    </div>
+                    {editingLine.matchedExpense.description && (
+                      <div className="pt-2 border-t border-blue-200">
+                        <div className="text-gray-600 mb-1">Description:</div>
+                        <div className="text-gray-900">{editingLine.matchedExpense.description}</div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {editingLine.matchedReceipt && (
+                  <div className="space-y-2 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Type:</span>
+                      <span className="font-medium text-gray-900">Receipt</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Payment Number:</span>
+                      <span className="font-medium text-gray-900 font-mono">{editingLine.matchedReceipt.payment_number}</span>
+                    </div>
+                    {editingLine.matchedReceipt.customer_name && (
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">Customer:</span>
+                        <span className="font-medium text-gray-900">{editingLine.matchedReceipt.customer_name}</span>
+                      </div>
+                    )}
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Amount:</span>
+                      <span className="font-medium text-gray-900">
+                        {editingLine.currency === 'USD' ? '$' : 'Rp'} {editingLine.matchedReceipt.amount.toLocaleString('id-ID')}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Date:</span>
+                      <span className="font-medium text-gray-900">
+                        {new Date(editingLine.matchedReceipt.payment_date).toLocaleDateString('id-ID')}
+                      </span>
+                    </div>
+                  </div>
+                )}
+
+                {editingLine.notes && (
+                  <div className="mt-3 pt-3 border-t border-blue-200">
+                    <div className="text-xs text-gray-600 mb-1">Match Notes:</div>
+                    <div className="text-sm text-gray-700 italic">{editingLine.notes}</div>
+                  </div>
+                )}
+              </div>
+            )}
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
