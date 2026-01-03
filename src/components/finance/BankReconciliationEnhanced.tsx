@@ -77,6 +77,7 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
   });
   const [deletePreview, setDeletePreview] = useState<any>(null);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [customers, setCustomers] = useState<Array<{ id: string; company_name: string }>>([]);
 
   const expenseCategories = [
     { value: 'duty_customs', label: 'Duty & Customs (BM)', type: 'import' },
@@ -99,7 +100,13 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
   useEffect(() => {
     loadBankAccounts();
     loadExpenses();
+    loadCustomers();
   }, []);
+
+  const loadCustomers = async () => {
+    const { data } = await supabase.from('customers').select('id, company_name').order('company_name');
+    if (data) setCustomers(data);
+  };
 
   useEffect(() => {
     if (selectedBank) {
@@ -1268,32 +1275,71 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
     }
   };
 
-  const handleRecordReceipt = async (line: StatementLine, type: string, description: string) => {
+  const handleRecordReceipt = async (line: StatementLine, type: string, customerId: string, description: string) => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
-      // Record as receipt - simplified
-      // Full implementation would create proper receipt voucher
+      if (type === 'customer_payment') {
+        if (!customerId) throw new Error('Please select a customer');
 
-      const { error: updateError } = await supabase
-        .from('bank_statement_lines')
-        .update({
-          reconciliation_status: 'recorded',
-          notes: `${type}: ${description}`,
-          matched_at: new Date().toISOString(),
-          matched_by: user.id,
-        })
-        .eq('id', line.id)
-        .select()
-        .single();
+        // Generate voucher number
+        const { data: voucherNum, error: voucherError } = await supabase.rpc('generate_voucher_number', { p_prefix: 'RV' });
+        if (voucherError) throw voucherError;
 
-      if (updateError) throw updateError;
+        // Create receipt voucher
+        const { data: receipt, error: receiptError } = await supabase
+          .from('receipt_vouchers')
+          .insert({
+            voucher_number: voucherNum,
+            voucher_date: line.date,
+            customer_id: customerId,
+            payment_method: 'bank_transfer',
+            bank_account_id: selectedBank,
+            reference_number: line.reference,
+            amount: line.credit,
+            description: description || line.description,
+            created_by: user.id,
+          })
+          .select()
+          .single();
+
+        if (receiptError) throw receiptError;
+
+        // Link to bank statement
+        const { error: updateError } = await supabase
+          .from('bank_statement_lines')
+          .update({
+            reconciliation_status: 'recorded',
+            matched_receipt_id: receipt.id,
+            matched_at: new Date().toISOString(),
+            matched_by: user.id,
+          })
+          .eq('id', line.id);
+
+        if (updateError) throw updateError;
+
+        alert(`✅ Receipt Voucher ${voucherNum} created successfully`);
+      } else {
+        // For non-customer payment types, just record the transaction
+        const { error: updateError } = await supabase
+          .from('bank_statement_lines')
+          .update({
+            reconciliation_status: 'recorded',
+            notes: `${type}: ${description}`,
+            matched_at: new Date().toISOString(),
+            matched_by: user.id,
+          })
+          .eq('id', line.id);
+
+        if (updateError) throw updateError;
+
+        alert('✅ Receipt recorded successfully');
+      }
 
       setRecordModal(false);
       setRecordingLine(null);
       loadStatementLines();
-      alert('✅ Receipt recorded successfully');
     } catch (error: any) {
       console.error('Error recording receipt:', error);
       alert('❌ ' + error.message);
@@ -1878,8 +1924,9 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
                     e.preventDefault();
                     const formData = new FormData(e.currentTarget);
                     const type = formData.get('type') as string;
+                    const customerId = formData.get('customer_id') as string;
                     const description = formData.get('description') as string;
-                    handleRecordReceipt(recordingLine, type, description);
+                    handleRecordReceipt(recordingLine, type, customerId, description);
                   }}
                   className="space-y-3"
                 >
@@ -1887,14 +1934,33 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
                     <label className="block text-sm font-medium text-gray-700 mb-1">Type *</label>
                     <select
                       name="type"
+                      id="receiptType"
                       required
                       className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                      onChange={(e) => {
+                        const customerField = document.getElementById('customerField');
+                        if (customerField) {
+                          customerField.style.display = e.target.value === 'customer_payment' ? 'block' : 'none';
+                        }
+                      }}
                     >
                       <option value="">Select type...</option>
                       <option value="customer_payment">Customer Payment</option>
                       <option value="capital">Capital Injection</option>
                       <option value="other_income">Other Income</option>
                       <option value="loan">Loan/Financing</option>
+                    </select>
+                  </div>
+                  <div id="customerField" style={{ display: 'none' }}>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Customer *</label>
+                    <select
+                      name="customer_id"
+                      className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="">Select customer...</option>
+                      {customers.map(c => (
+                        <option key={c.id} value={c.id}>{c.company_name}</option>
+                      ))}
                     </select>
                   </div>
                   <div>
