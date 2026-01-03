@@ -123,20 +123,19 @@ export function ReceiptVoucherManager({ canManage }: ReceiptVoucherManagerProps)
 
   const loadAllocationTargets = async (customerId: string, keepExistingAllocations = false, voucherId?: string) => {
     try {
-      // Load pending invoices (with balance)
-      const { data: invoices } = await supabase
-        .from('sales_invoices')
-        .select('id, invoice_number, invoice_date, total_amount, paid_amount, balance_amount')
-        .eq('customer_id', customerId)
-        .gt('balance_amount', 0)
-        .order('invoice_date');
+      // Load invoices with calculated balance using RPC function
+      const { data: allInvoicesData } = await supabase
+        .rpc('get_invoices_with_balance', { customer_uuid: customerId });
 
-      // Load sales orders (any active status - exclude cancelled/archived)
+      // Filter for unpaid/partially paid invoices
+      const invoices = (allInvoicesData || []).filter(inv => inv.balance_amount > 0);
+
+      // Load sales orders (any active status - exclude cancelled/closed)
       const { data: salesOrders } = await supabase
         .from('sales_orders')
         .select('id, so_number, so_date, total_amount, advance_payment_amount, advance_payment_status, status')
         .eq('customer_id', customerId)
-        .not('status', 'in', '(cancelled,archived)')
+        .not('status', 'in', '(cancelled,closed)')
         .order('so_date');
 
       let additionalInvoices: any[] = [];
@@ -154,11 +153,13 @@ export function ReceiptVoucherManager({ canManage }: ReceiptVoucherManagerProps)
           const soIds = existingAllocs.filter(a => a.sales_order_id).map(a => a.sales_order_id);
 
           if (invoiceIds.length > 0) {
-            const { data: linkedInvoices } = await supabase
-              .from('sales_invoices')
-              .select('id, invoice_number, invoice_date, total_amount, paid_amount, balance_amount')
-              .in('id', invoiceIds);
-            additionalInvoices = linkedInvoices || [];
+            // Get all invoices with balance calculation, then filter for the linked ones
+            const { data: allInvsData } = await supabase
+              .rpc('get_invoices_with_balance', { customer_uuid: customerId });
+
+            additionalInvoices = (allInvsData || []).filter(inv =>
+              invoiceIds.includes(inv.id)
+            );
           }
 
           if (soIds.length > 0) {
