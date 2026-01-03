@@ -120,9 +120,9 @@ export function ReceiptVoucherManager({ canManage }: ReceiptVoucherManagerProps)
     setBankAccounts(data || []);
   };
 
-  const loadAllocationTargets = async (customerId: string) => {
+  const loadAllocationTargets = async (customerId: string, keepExistingAllocations = false, voucherId?: string) => {
     try {
-      // Load pending invoices
+      // Load pending invoices (with balance)
       const { data: invoices } = await supabase
         .from('sales_invoices')
         .select('id, invoice_number, invoice_date, total_amount, paid_amount, balance_amount')
@@ -138,23 +138,63 @@ export function ReceiptVoucherManager({ canManage }: ReceiptVoucherManagerProps)
         .in('status', ['pending', 'approved'])
         .order('so_date');
 
+      let additionalInvoices: any[] = [];
+      let additionalSOs: any[] = [];
+
+      // If editing, also load already-allocated invoices/SOs (even if fully paid)
+      if (voucherId) {
+        const { data: existingAllocs } = await supabase
+          .from('voucher_allocations')
+          .select('sales_invoice_id, sales_order_id')
+          .eq('receipt_voucher_id', voucherId);
+
+        if (existingAllocs) {
+          const invoiceIds = existingAllocs.filter(a => a.sales_invoice_id).map(a => a.sales_invoice_id);
+          const soIds = existingAllocs.filter(a => a.sales_order_id).map(a => a.sales_order_id);
+
+          if (invoiceIds.length > 0) {
+            const { data: linkedInvoices } = await supabase
+              .from('sales_invoices')
+              .select('id, invoice_number, invoice_date, total_amount, paid_amount, balance_amount')
+              .in('id', invoiceIds);
+            additionalInvoices = linkedInvoices || [];
+          }
+
+          if (soIds.length > 0) {
+            const { data: linkedSOs } = await supabase
+              .from('sales_orders')
+              .select('id, so_number, so_date, total_amount, advance_payment_amount, advance_payment_status')
+              .in('id', soIds);
+            additionalSOs = linkedSOs || [];
+          }
+        }
+      }
+
+      // Merge and deduplicate
+      const allInvoices = [...(invoices || []), ...additionalInvoices];
+      const uniqueInvoices = Array.from(new Map(allInvoices.map(inv => [inv.id, inv])).values());
+
+      const allSOs = [...(salesOrders || []), ...additionalSOs];
+      const uniqueSOs = Array.from(new Map(allSOs.map(so => [so.id, so])).values())
+        .filter(so => so.advance_payment_status !== 'full');
+
       // Combine both into allocation targets
       const targets: AllocationTarget[] = [
-        ...(salesOrders || []).filter(so =>
-          so.advance_payment_status !== 'full' // Only show SO if not fully paid
-        ).map(so => ({
+        ...uniqueSOs.map(so => ({
           ...so,
           balance_due: so.total_amount - (so.advance_payment_amount || 0),
           type: 'salesorder' as const
         })),
-        ...(invoices || []).map(inv => ({
+        ...uniqueInvoices.map(inv => ({
           ...inv,
           type: 'invoice' as const
         }))
       ];
 
       setAllocationTargets(targets);
-      setAllocations([]);
+      if (!keepExistingAllocations) {
+        setAllocations([]);
+      }
     } catch (error) {
       console.error('Error loading allocation targets:', error);
     }
@@ -343,7 +383,10 @@ export function ReceiptVoucherManager({ canManage }: ReceiptVoucherManagerProps)
       description: voucher.description || '',
     });
 
-    // Load existing allocations
+    // Load allocation targets for this customer (pass voucher ID to include already-allocated docs)
+    await loadAllocationTargets(voucher.customer_id, false, voucher.id);
+
+    // THEN load existing allocations (after targets are loaded)
     const { data: allocs } = await supabase
       .from('voucher_allocations')
       .select('*')
@@ -353,13 +396,10 @@ export function ReceiptVoucherManager({ canManage }: ReceiptVoucherManagerProps)
       const existingAllocs = allocs.map(a => ({
         targetId: a.sales_invoice_id || a.sales_order_id,
         targetType: (a.sales_invoice_id ? 'invoice' : 'salesorder') as 'invoice' | 'salesorder',
-        amount: a.allocated_amount
+        amount: Number(a.allocated_amount)
       }));
       setAllocations(existingAllocs);
     }
-
-    // Load allocation targets for this customer
-    await loadAllocationTargets(voucher.customer_id);
 
     setModalOpen(true);
   };
