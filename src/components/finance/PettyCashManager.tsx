@@ -43,6 +43,20 @@ const expenseCategories = [
   'Miscellaneous',
 ];
 
+// Map petty cash categories to finance_expenses valid categories
+const mapPettyCashCategoryToFinance = (category: string): string => {
+  const mapping: { [key: string]: string } = {
+    'Office Supplies': 'office_admin',
+    'Transportation': 'other',
+    'Meals & Entertainment': 'other',
+    'Postage & Courier': 'other',
+    'Cleaning & Maintenance': 'other',
+    'Utilities': 'utilities',
+    'Miscellaneous': 'other',
+  };
+  return mapping[category] || 'other';
+};
+
 const fundSources = [
   'Cash from Office',
   'Bank Transfer',
@@ -176,12 +190,15 @@ export function PettyCashManager({ canManage }: PettyCashManagerProps) {
 
       // If expense is paid by bank, create finance_expense instead
       if (formData.transaction_type === 'expense' && formData.paid_by === 'bank') {
+        // Map petty cash category to valid finance_expenses category
+        const mappedCategory = mapPettyCashCategoryToFinance(formData.expense_category || 'Miscellaneous');
+
         const expenseData = {
-          expense_category: formData.expense_category || 'other',
+          expense_category: mappedCategory,
           expense_type: 'admin',
           amount: formData.amount,
           expense_date: formData.transaction_date,
-          description: `${formData.description} (Paid to: ${formData.paid_to})`,
+          description: `${formData.description} (Paid to: ${formData.paid_to}, Category: ${formData.expense_category || 'Miscellaneous'})`,
           payment_method: 'bank_transfer',
           bank_account_id: formData.bank_account_id || null,
           paid_by: 'bank',
