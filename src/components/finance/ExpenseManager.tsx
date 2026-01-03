@@ -249,6 +249,7 @@ export function ExpenseManager({ canManage }: ExpenseManagerProps) {
               bank_accounts(bank_name, account_number)
             )
           `)
+          .neq('paid_by', 'cash')
           .order('expense_date', { ascending: false })
           .order('created_at', { ascending: false }),
         supabase
@@ -346,23 +347,97 @@ export function ExpenseManager({ canManage }: ExpenseManagerProps) {
       };
 
       if (editingExpense) {
-        const { error } = await supabase
-          .from('finance_expenses')
-          .update(expenseData)
-          .eq('id', editingExpense.id);
+        // Check if user changed payment method to cash - move to Petty Cash
+        if (formData.payment_method === 'cash') {
+          const { data: { user } } = await supabase.auth.getUser();
+          if (!user) throw new Error('Not authenticated');
 
-        if (error) throw error;
-        alert('Expense updated successfully');
+          // Generate petty cash transaction number
+          const year = new Date().getFullYear().toString().slice(-2);
+          const month = (new Date().getMonth() + 1).toString().padStart(2, '0');
+          const { count } = await supabase
+            .from('petty_cash_transactions')
+            .select('*', { count: 'exact', head: true })
+            .like('transaction_number', `PCE${year}${month}%`);
+
+          const transactionNumber = `PCE${year}${month}-${String((count || 0) + 1).padStart(4, '0')}`;
+
+          // Create petty cash transaction
+          const { error: pettyCashError } = await supabase
+            .from('petty_cash_transactions')
+            .insert([{
+              transaction_number: transactionNumber,
+              transaction_date: formData.expense_date,
+              transaction_type: 'expense',
+              amount: formData.amount,
+              description: formData.description || null,
+              expense_category: formData.expense_category,
+              paid_to: null,
+              paid_by_staff_name: null,
+              created_by: user.id
+            }]);
+
+          if (pettyCashError) throw pettyCashError;
+
+          // Delete from finance_expenses
+          const { error: deleteError } = await supabase
+            .from('finance_expenses')
+            .delete()
+            .eq('id', editingExpense.id);
+
+          if (deleteError) throw deleteError;
+
+          alert('Expense moved to Petty Cash successfully');
+        } else {
+          // Regular update
+          const { error } = await supabase
+            .from('finance_expenses')
+            .update(expenseData)
+            .eq('id', editingExpense.id);
+
+          if (error) throw error;
+          alert('Expense updated successfully');
+        }
       } else {
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) throw new Error('Not authenticated');
 
-        const { error } = await supabase
-          .from('finance_expenses')
-          .insert([{ ...expenseData, created_by: user.id }]);
+        // Check if payment method is cash - create in Petty Cash instead
+        if (formData.payment_method === 'cash') {
+          // Generate petty cash transaction number
+          const year = new Date().getFullYear().toString().slice(-2);
+          const month = (new Date().getMonth() + 1).toString().padStart(2, '0');
+          const { count } = await supabase
+            .from('petty_cash_transactions')
+            .select('*', { count: 'exact', head: true })
+            .like('transaction_number', `PCE${year}${month}%`);
 
-        if (error) throw error;
-        alert('Expense recorded successfully');
+          const transactionNumber = `PCE${year}${month}-${String((count || 0) + 1).padStart(4, '0')}`;
+
+          const { error: pettyCashError } = await supabase
+            .from('petty_cash_transactions')
+            .insert([{
+              transaction_number: transactionNumber,
+              transaction_date: formData.expense_date,
+              transaction_type: 'expense',
+              amount: formData.amount,
+              description: formData.description || null,
+              expense_category: formData.expense_category,
+              paid_to: null,
+              paid_by_staff_name: null,
+              created_by: user.id
+            }]);
+
+          if (pettyCashError) throw pettyCashError;
+          alert('Expense recorded in Petty Cash successfully');
+        } else {
+          const { error } = await supabase
+            .from('finance_expenses')
+            .insert([{ ...expenseData, created_by: user.id }]);
+
+          if (error) throw error;
+          alert('Expense recorded successfully');
+        }
       }
 
       setModalOpen(false);
