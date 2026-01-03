@@ -32,6 +32,7 @@ interface SalesOrder {
   advance_payment_amount: number;
   advance_payment_status: string;
   balance_due: number;
+  status?: string;
 }
 
 type AllocationTarget = (SalesInvoice & { type: 'invoice' }) | (SalesOrder & { type: 'salesorder' });
@@ -130,12 +131,12 @@ export function ReceiptVoucherManager({ canManage }: ReceiptVoucherManagerProps)
         .gt('balance_amount', 0)
         .order('invoice_date');
 
-      // Load sales orders (pending or approved with balance due)
+      // Load sales orders (any active status - exclude cancelled/archived)
       const { data: salesOrders } = await supabase
         .from('sales_orders')
-        .select('id, so_number, so_date, total_amount, advance_payment_amount, advance_payment_status')
+        .select('id, so_number, so_date, total_amount, advance_payment_amount, advance_payment_status, status')
         .eq('customer_id', customerId)
-        .in('status', ['pending', 'approved'])
+        .not('status', 'in', '(cancelled,archived)')
         .order('so_date');
 
       let additionalInvoices: any[] = [];
@@ -163,7 +164,7 @@ export function ReceiptVoucherManager({ canManage }: ReceiptVoucherManagerProps)
           if (soIds.length > 0) {
             const { data: linkedSOs } = await supabase
               .from('sales_orders')
-              .select('id, so_number, so_date, total_amount, advance_payment_amount, advance_payment_status')
+              .select('id, so_number, so_date, total_amount, advance_payment_amount, advance_payment_status, status')
               .in('id', soIds);
             additionalSOs = linkedSOs || [];
           }
