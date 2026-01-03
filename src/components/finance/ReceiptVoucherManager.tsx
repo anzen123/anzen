@@ -510,17 +510,23 @@ export function ReceiptVoucherManager({ canManage }: ReceiptVoucherManagerProps)
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Customer *</label>
-              <select
-                required
-                value={formData.customer_id}
-                onChange={(e) => setFormData({ ...formData, customer_id: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-              >
-                <option value="">Select customer</option>
-                {customers.map(c => (
-                  <option key={c.id} value={c.id}>{c.company_name}</option>
-                ))}
-              </select>
+              {editMode ? (
+                <div className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-gray-50">
+                  {customers.find(c => c.id === formData.customer_id)?.company_name || 'Unknown'}
+                </div>
+              ) : (
+                <select
+                  required
+                  value={formData.customer_id}
+                  onChange={(e) => setFormData({ ...formData, customer_id: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                >
+                  <option value="">Select customer</option>
+                  {customers.map(c => (
+                    <option key={c.id} value={c.id}>{c.company_name}</option>
+                  ))}
+                </select>
+              )}
             </div>
           </div>
 
@@ -590,24 +596,31 @@ export function ReceiptVoucherManager({ canManage }: ReceiptVoucherManagerProps)
             />
           </div>
 
-          {allocationTargets.length > 0 && (
+          {(allocationTargets.length > 0 || allocations.length > 0 || editMode) && (
             <div className="border-t pt-4">
-              <h4 className="font-medium text-gray-700 mb-3">Allocate Payment</h4>
-              <p className="text-xs text-gray-500 mb-2">
-                Link this payment to Sales Orders (advance) or Sales Invoices
-              </p>
-              <div className="max-h-64 overflow-y-auto border rounded-lg">
-                <table className="w-full text-sm">
-                  <thead className="bg-gray-50 sticky top-0">
-                    <tr>
-                      <th className="px-3 py-2 text-left">Document</th>
-                      <th className="px-3 py-2 text-center">Type</th>
-                      <th className="px-3 py-2 text-right">Balance Due</th>
-                      <th className="px-3 py-2 text-right">Allocate (Rp)</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y">
-                    {allocationTargets.map(target => {
+              <h4 className="font-medium text-gray-700 mb-2">Allocate Payment</h4>
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-3">
+                <p className="text-sm text-blue-900 font-medium mb-1">How to allocate:</p>
+                <ul className="text-xs text-blue-800 space-y-1 ml-4 list-disc">
+                  <li><strong className="text-purple-700">SO (Advance)</strong> = Record advance payment against Sales Order</li>
+                  <li><strong className="text-blue-700">Invoice</strong> = Record payment against Sales Invoice</li>
+                  <li>Enter amount in "Allocate (Rp)" column to link payment to document</li>
+                  <li>You can allocate partial amounts to multiple documents</li>
+                </ul>
+              </div>
+              {allocationTargets.length > 0 ? (
+                <div className="max-h-64 overflow-y-auto border rounded-lg">
+                  <table className="w-full text-sm">
+                    <thead className="bg-gray-50 sticky top-0">
+                      <tr>
+                        <th className="px-3 py-2 text-left">Document</th>
+                        <th className="px-3 py-2 text-center">Type</th>
+                        <th className="px-3 py-2 text-right">Balance Due</th>
+                        <th className="px-3 py-2 text-right">Allocate (Rp)</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y">
+                      {allocationTargets.map(target => {
                       const balance = target.type === 'invoice'
                         ? (target as SalesInvoice & { type: 'invoice' }).balance_amount
                         : (target as SalesOrder & { type: 'salesorder' }).balance_due;
@@ -653,6 +666,14 @@ export function ReceiptVoucherManager({ canManage }: ReceiptVoucherManagerProps)
                   </tbody>
                 </table>
               </div>
+              ) : (
+                <div className="border rounded-lg p-4 text-center text-gray-500 text-sm">
+                  <p>No unpaid invoices or sales orders found for this customer.</p>
+                  {editMode && allocations.length > 0 && (
+                    <p className="mt-2 text-xs">This voucher had allocations that are now fully paid or no longer available.</p>
+                  )}
+                </div>
+              )}
               <div className="mt-3 flex justify-between items-center text-sm">
                 <div className="text-gray-600">
                   <span className="font-medium">{allocations.length}</span> allocation(s)
@@ -669,11 +690,11 @@ export function ReceiptVoucherManager({ canManage }: ReceiptVoucherManagerProps)
           )}
 
           <div className="flex justify-end gap-3 pt-4">
-            <button type="button" onClick={() => setModalOpen(false)} className="px-4 py-2 text-gray-700 border rounded-lg hover:bg-gray-50">
+            <button type="button" onClick={() => { setModalOpen(false); resetForm(); }} className="px-4 py-2 text-gray-700 border rounded-lg hover:bg-gray-50">
               Cancel
             </button>
             <button type="submit" className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700">
-              Save Receipt
+              {editMode ? 'Update Receipt' : 'Save Receipt'}
             </button>
           </div>
         </form>
