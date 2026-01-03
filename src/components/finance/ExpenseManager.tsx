@@ -42,6 +42,10 @@ interface ImportContainer {
 interface DeliveryChallan {
   id: string;
   challan_number: string;
+  challan_date: string;
+  customers?: {
+    company_name: string;
+  } | null;
 }
 
 interface BankAccount {
@@ -257,7 +261,7 @@ export function ExpenseManager({ canManage }: ExpenseManagerProps) {
           .order('container_ref'),
         supabase
           .from('delivery_challans')
-          .select('id, challan_number')
+          .select('id, challan_number, challan_date, customers(company_name)')
           .order('challan_number', { ascending: false })
           .limit(50),
         supabase
@@ -945,7 +949,7 @@ export function ExpenseManager({ canManage }: ExpenseManagerProps) {
                   <option value="">Select DC (Optional)</option>
                   {challans.map((challan) => (
                     <option key={challan.id} value={challan.id}>
-                      {challan.challan_number}
+                      {challan.challan_number} - {new Date(challan.challan_date).toLocaleDateString('en-GB')} - {challan.customers?.company_name || 'No Customer'}
                     </option>
                   ))}
                 </select>
