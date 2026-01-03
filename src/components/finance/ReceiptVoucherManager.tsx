@@ -13,6 +13,7 @@ interface BankAccount {
   account_name: string;
   bank_name: string;
   account_number: string;
+  alias?: string;
 }
 
 interface SalesInvoice {
@@ -49,7 +50,8 @@ interface ReceiptVoucher {
   description: string | null;
   created_at: string;
   customers?: { company_name: string };
-  bank_accounts?: { account_name: string; bank_name: string };
+  bank_accounts?: { account_name: string; bank_name: string; alias?: string };
+  allocated_to?: string; // Display text like "SAPJ-008 (Invoice)" or "SO-2025-0004 (Advance)"
 }
 
 interface ReceiptVoucherManagerProps {
@@ -99,11 +101,45 @@ export function ReceiptVoucherManager({ canManage }: ReceiptVoucherManagerProps)
     try {
       const { data, error } = await supabase
         .from('receipt_vouchers')
-        .select('*, customers(company_name), bank_accounts(account_name, bank_name)')
+        .select('*, customers(company_name), bank_accounts(account_name, bank_name, alias)')
         .order('voucher_date', { ascending: false });
 
       if (error) throw error;
-      setVouchers(data || []);
+
+      // Load allocations for each voucher
+      const vouchersWithAllocations = await Promise.all(
+        (data || []).map(async (voucher) => {
+          const { data: allocations } = await supabase
+            .from('voucher_allocations')
+            .select(`
+              allocated_amount,
+              sales_invoice_id,
+              sales_order_id,
+              sales_invoices(invoice_number),
+              sales_orders(so_number)
+            `)
+            .eq('receipt_voucher_id', voucher.id);
+
+          // Build display text
+          let allocated_to = '-';
+          if (allocations && allocations.length > 0) {
+            const displays = allocations.map(alloc => {
+              if (alloc.sales_invoice_id && alloc.sales_invoices) {
+                return `${alloc.sales_invoices.invoice_number} (Invoice)`;
+              } else if (alloc.sales_order_id && alloc.sales_orders) {
+                return `${alloc.sales_orders.so_number} (Advance)`;
+              }
+              return null;
+            }).filter(Boolean);
+
+            allocated_to = displays.length > 0 ? displays.join(', ') : '-';
+          }
+
+          return { ...voucher, allocated_to };
+        })
+      );
+
+      setVouchers(vouchersWithAllocations);
     } catch (error) {
       console.error('Error loading vouchers:', error);
     } finally {
@@ -117,7 +153,7 @@ export function ReceiptVoucherManager({ canManage }: ReceiptVoucherManagerProps)
   };
 
   const loadBankAccounts = async () => {
-    const { data } = await supabase.from('bank_accounts').select('id, account_name, bank_name, account_number').eq('is_active', true);
+    const { data } = await supabase.from('bank_accounts').select('id, account_name, bank_name, account_number, alias').eq('is_active', true);
     setBankAccounts(data || []);
   };
 
@@ -475,7 +511,8 @@ export function ReceiptVoucherManager({ canManage }: ReceiptVoucherManagerProps)
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Customer</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Method</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Reference</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Bank</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Allocated To</th>
               <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Amount</th>
               <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Actions</th>
             </tr>
@@ -491,7 +528,10 @@ export function ReceiptVoucherManager({ canManage }: ReceiptVoucherManagerProps)
                     {voucher.payment_method.replace('_', ' ')}
                   </span>
                 </td>
-                <td className="px-4 py-3 text-sm">{voucher.reference_number || '-'}</td>
+                <td className="px-4 py-3 text-sm">
+                  {voucher.bank_accounts?.alias || voucher.bank_accounts?.account_name || '-'}
+                </td>
+                <td className="px-4 py-3 text-sm text-gray-600">{voucher.allocated_to}</td>
                 <td className="px-4 py-3 text-right font-medium text-green-600">
                   Rp {voucher.amount.toLocaleString('id-ID')}
                 </td>
@@ -611,7 +651,7 @@ export function ReceiptVoucherManager({ canManage }: ReceiptVoucherManagerProps)
                 >
                   <option value="">Select account</option>
                   {bankAccounts.map(b => (
-                    <option key={b.id} value={b.id}>{b.bank_name} - {b.account_name}</option>
+                    <option key={b.id} value={b.id}>{b.alias || `${b.bank_name} - ${b.account_name}`}</option>
                   ))}
                 </select>
               </div>
@@ -769,7 +809,7 @@ export function ReceiptVoucherManager({ canManage }: ReceiptVoucherManagerProps)
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-500">Bank Account</label>
-                <p>{selectedVoucher.bank_accounts ? `${selectedVoucher.bank_accounts.bank_name} - ${selectedVoucher.bank_accounts.account_name}` : '-'}</p>
+                <p>{selectedVoucher.bank_accounts?.alias || (selectedVoucher.bank_accounts ? `${selectedVoucher.bank_accounts.bank_name} - ${selectedVoucher.bank_accounts.account_name}` : '-')}</p>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-500">Reference</label>
