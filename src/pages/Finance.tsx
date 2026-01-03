@@ -112,8 +112,25 @@ const sectionConfig = {
 export function Finance() {
   const { t } = useLanguage();
   const { profile } = useAuth();
-  const [activeSection, setActiveSection] = useState<FinanceSection>('record');
-  const [activeTab, setActiveTab] = useState<FinanceTab>('purchase_invoices');
+
+  // Parse URL hash to get section and tab
+  const getFromHash = () => {
+    const hash = window.location.hash.slice(1); // Remove #
+    const parts = hash.split('/');
+    if (parts.length === 2 && parts[0] === 'finance') {
+      // Find which section contains this tab
+      for (const [section, config] of Object.entries(sectionConfig)) {
+        if (config.tabs.some(tab => tab.id === parts[1])) {
+          return { section: section as FinanceSection, tab: parts[1] as FinanceTab };
+        }
+      }
+    }
+    return { section: 'record' as FinanceSection, tab: 'purchase_invoices' as FinanceTab };
+  };
+
+  const initial = getFromHash();
+  const [activeSection, setActiveSection] = useState<FinanceSection>(initial.section);
+  const [activeTab, setActiveTab] = useState<FinanceTab>(initial.tab);
   const [expenses, setExpenses] = useState<FinanceExpense[]>([]);
   const [batches, setBatches] = useState<Batch[]>([]);
   const [loading, setLoading] = useState(true);
@@ -130,6 +147,11 @@ export function Finance() {
   });
 
   const canManage = profile?.role === 'admin' || profile?.role === 'accounts';
+
+  // Update hash when tab changes
+  useEffect(() => {
+    window.location.hash = `finance/${activeTab}`;
+  }, [activeTab]);
 
   useEffect(() => {
     if (activeTab === 'petty_cash') {
@@ -356,12 +378,16 @@ export function Finance() {
                 const Icon = tab.icon;
                 const isActive = activeTab === tab.id;
                 return (
-                  <button
+                  <a
                     key={tab.id}
-                    onClick={() => setActiveTab(tab.id as FinanceTab)}
+                    href={`#finance/${tab.id}`}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      setActiveTab(tab.id as FinanceTab);
+                    }}
                     className={`w-full text-left px-3 py-2.5 flex items-center gap-2 transition-all border-l-3 ${
-                      isActive 
-                        ? 'bg-blue-50 border-l-blue-600 text-blue-700' 
+                      isActive
+                        ? 'bg-blue-50 border-l-blue-600 text-blue-700'
                         : 'border-l-transparent hover:bg-gray-50 text-gray-700'
                     } ${idx !== 0 ? 'border-t border-gray-100' : ''}`}
                   >
@@ -370,7 +396,7 @@ export function Finance() {
                       <div className="text-sm font-medium truncate">{tab.label}</div>
                     </div>
                     {isActive && <ChevronRight className="w-4 h-4 text-blue-400" />}
-                  </button>
+                  </a>
                 );
               })}
             </div>
