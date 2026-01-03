@@ -56,9 +56,10 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
   const [uploading, setUploading] = useState(false);
   const [activeFilter, setActiveFilter] = useState<'all' | 'matched' | 'suggested' | 'unmatched'>('all');
   const [dateRange, setDateRange] = useState({
-    start: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0],
+    start: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
     end: new Date().toISOString().split('T')[0],
   });
+  const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' } | null>(null);
   const [recordingLine, setRecordingLine] = useState<StatementLine | null>(null);
   const [recordModal, setRecordModal] = useState(false);
   const [expenses, setExpenses] = useState<any[]>([]);
@@ -1304,6 +1305,45 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
     return line.status === activeFilter;
   });
 
+  // Sorting function
+  const handleSort = (key: string) => {
+    let direction: 'asc' | 'desc' = 'asc';
+    if (sortConfig && sortConfig.key === key && sortConfig.direction === 'asc') {
+      direction = 'desc';
+    }
+    setSortConfig({ key, direction });
+  };
+
+  const sortedLines = [...filteredLines].sort((a, b) => {
+    if (!sortConfig) return 0;
+
+    const { key, direction } = sortConfig;
+    let aValue: any = a[key as keyof StatementLine];
+    let bValue: any = b[key as keyof StatementLine];
+
+    // Handle date sorting
+    if (key === 'date') {
+      aValue = new Date(aValue).getTime();
+      bValue = new Date(bValue).getTime();
+    }
+
+    // Handle numeric sorting for debit/credit
+    if (key === 'debit' || key === 'credit') {
+      aValue = Number(aValue) || 0;
+      bValue = Number(bValue) || 0;
+    }
+
+    // Handle string sorting
+    if (typeof aValue === 'string') {
+      aValue = aValue.toLowerCase();
+      bValue = bValue.toLowerCase();
+    }
+
+    if (aValue < bValue) return direction === 'asc' ? -1 : 1;
+    if (aValue > bValue) return direction === 'asc' ? 1 : -1;
+    return 0;
+  });
+
   const stats = {
     total: statementLines.length,
     matched: statementLines.filter(l => l.status === 'matched' || l.status === 'recorded').length,
@@ -1549,16 +1589,66 @@ export function BankReconciliationEnhanced({ canManage }: BankReconciliationEnha
           <table className="w-full text-sm">
             <thead className="bg-gray-50 border-b">
               <tr>
-                <th className="px-3 py-2 text-left font-medium text-gray-600">Date</th>
-                <th className="px-3 py-2 text-left font-medium text-gray-600">Description</th>
-                <th className="px-3 py-2 text-right font-medium text-gray-600">Debit</th>
-                <th className="px-3 py-2 text-right font-medium text-gray-600">Credit</th>
-                <th className="px-3 py-2 text-center font-medium text-gray-600">Status</th>
+                <th
+                  onClick={() => handleSort('date')}
+                  className="px-3 py-2 text-left font-medium text-gray-600 cursor-pointer hover:bg-gray-100 select-none"
+                >
+                  <div className="flex items-center gap-1">
+                    Date
+                    {sortConfig?.key === 'date' && (
+                      <span className="text-blue-600">{sortConfig.direction === 'asc' ? '↑' : '↓'}</span>
+                    )}
+                  </div>
+                </th>
+                <th
+                  onClick={() => handleSort('description')}
+                  className="px-3 py-2 text-left font-medium text-gray-600 cursor-pointer hover:bg-gray-100 select-none"
+                >
+                  <div className="flex items-center gap-1">
+                    Description
+                    {sortConfig?.key === 'description' && (
+                      <span className="text-blue-600">{sortConfig.direction === 'asc' ? '↑' : '↓'}</span>
+                    )}
+                  </div>
+                </th>
+                <th
+                  onClick={() => handleSort('debit')}
+                  className="px-3 py-2 text-right font-medium text-gray-600 cursor-pointer hover:bg-gray-100 select-none"
+                >
+                  <div className="flex items-center justify-end gap-1">
+                    Debit
+                    {sortConfig?.key === 'debit' && (
+                      <span className="text-blue-600">{sortConfig.direction === 'asc' ? '↑' : '↓'}</span>
+                    )}
+                  </div>
+                </th>
+                <th
+                  onClick={() => handleSort('credit')}
+                  className="px-3 py-2 text-right font-medium text-gray-600 cursor-pointer hover:bg-gray-100 select-none"
+                >
+                  <div className="flex items-center justify-end gap-1">
+                    Credit
+                    {sortConfig?.key === 'credit' && (
+                      <span className="text-blue-600">{sortConfig.direction === 'asc' ? '↑' : '↓'}</span>
+                    )}
+                  </div>
+                </th>
+                <th
+                  onClick={() => handleSort('status')}
+                  className="px-3 py-2 text-center font-medium text-gray-600 cursor-pointer hover:bg-gray-100 select-none"
+                >
+                  <div className="flex items-center justify-center gap-1">
+                    Status
+                    {sortConfig?.key === 'status' && (
+                      <span className="text-blue-600">{sortConfig.direction === 'asc' ? '↑' : '↓'}</span>
+                    )}
+                  </div>
+                </th>
                 <th className="px-3 py-2 text-center font-medium text-gray-600">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {filteredLines.map(line => (
+              {sortedLines.map(line => (
                 <tr key={line.id} className="hover:bg-gray-50">
                   <td className="px-3 py-2 text-gray-700 whitespace-nowrap">
                     {new Date(line.date).toLocaleDateString('id-ID')}

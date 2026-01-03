@@ -73,6 +73,7 @@ export function PettyCashManager({ canManage }: PettyCashManagerProps) {
   const [cashBalance, setCashBalance] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
   const [uploadingFiles, setUploadingFiles] = useState<{file: File, type: string}[]>([]);
+  const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' } | null>(null);
 
   const [formData, setFormData] = useState({
     transaction_type: 'expense' as 'withdraw' | 'expense',
@@ -386,18 +387,18 @@ export function PettyCashManager({ canManage }: PettyCashManagerProps) {
           <table className="w-full">
             <thead className="bg-gray-50">
               <tr>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
+                <th onClick={() => { let dir: 'asc' | 'desc' = 'asc'; if (sortConfig?.key === 'transaction_date' && sortConfig.direction === 'asc') dir = 'desc'; setSortConfig({ key: 'transaction_date', direction: dir }); }} className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100 select-none"><div className="flex items-center gap-1">Date{sortConfig?.key === 'transaction_date' && <span className="text-blue-600">{sortConfig.direction === 'asc' ? '↑' : '↓'}</span>}</div></th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Txn No</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Description</th>
+                <th onClick={() => { let dir: 'asc' | 'desc' = 'asc'; if (sortConfig?.key === 'transaction_type' && sortConfig.direction === 'asc') dir = 'desc'; setSortConfig({ key: 'transaction_type', direction: dir }); }} className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100 select-none"><div className="flex items-center gap-1">Type{sortConfig?.key === 'transaction_type' && <span className="text-blue-600">{sortConfig.direction === 'asc' ? '↑' : '↓'}</span>}</div></th>
+                <th onClick={() => { let dir: 'asc' | 'desc' = 'asc'; if (sortConfig?.key === 'description' && sortConfig.direction === 'asc') dir = 'desc'; setSortConfig({ key: 'description', direction: dir }); }} className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100 select-none"><div className="flex items-center gap-1">Description{sortConfig?.key === 'description' && <span className="text-blue-600">{sortConfig.direction === 'asc' ? '↑' : '↓'}</span>}</div></th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Paid To / Source</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Staff</th>
-                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Debit (In)</th>
+                <th onClick={() => { let dir: 'asc' | 'desc' = 'asc'; if (sortConfig?.key === 'amount' && sortConfig.direction === 'asc') dir = 'desc'; setSortConfig({ key: 'amount', direction: dir }); }} className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100 select-none"><div className="flex items-center justify-end gap-1">Debit (In){sortConfig?.key === 'amount' && <span className="text-blue-600">{sortConfig.direction === 'asc' ? '↑' : '↓'}</span>}</div></th>
                 <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Credit (Out)</th>
               </tr>
             </thead>
             <tbody className="divide-y">
-              {transactions.map(tx => (
+              {[...transactions].sort((a, b) => { if (!sortConfig) return 0; const { key, direction } = sortConfig; let aVal: any = a[key as keyof PettyCashTransaction]; let bVal: any = b[key as keyof PettyCashTransaction]; if (key === 'transaction_date') { aVal = new Date(aVal).getTime(); bVal = new Date(bVal).getTime(); } else if (key === 'amount') { aVal = Number(aVal) || 0; bVal = Number(bVal) || 0; } else if (typeof aVal === 'string') { aVal = aVal.toLowerCase(); bVal = bVal.toLowerCase(); } if (aVal < bVal) return direction === 'asc' ? -1 : 1; if (aVal > bVal) return direction === 'asc' ? 1 : -1; return 0; }).map(tx => (
                 <tr key={tx.id} className="hover:bg-gray-50">
                   <td className="px-4 py-3 text-sm">
                     {new Date(tx.transaction_date).toLocaleDateString('id-ID')}

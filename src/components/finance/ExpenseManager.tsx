@@ -208,6 +208,7 @@ export function ExpenseManager({ canManage }: ExpenseManagerProps) {
   const [uploadingFiles, setUploadingFiles] = useState<File[]>([]);
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
+  const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' } | null>(null);
 
   const [formData, setFormData] = useState({
     expense_category: 'other',
@@ -477,6 +478,48 @@ export function ExpenseManager({ canManage }: ExpenseManagerProps) {
     return true;
   });
 
+  // Sorting function
+  const handleSort = (key: string) => {
+    let direction: 'asc' | 'desc' = 'asc';
+    if (sortConfig && sortConfig.key === key && sortConfig.direction === 'asc') {
+      direction = 'desc';
+    }
+    setSortConfig({ key, direction });
+  };
+
+  const sortedExpenses = [...filteredExpenses].sort((a, b) => {
+    if (!sortConfig) return 0;
+
+    const { key, direction } = sortConfig;
+    let aValue: any;
+    let bValue: any;
+
+    if (key === 'date') {
+      aValue = new Date(a.expense_date).getTime();
+      bValue = new Date(b.expense_date).getTime();
+    } else if (key === 'category') {
+      const aCat = expenseCategories.find(c => c.value === a.expense_category);
+      const bCat = expenseCategories.find(c => c.value === b.expense_category);
+      aValue = aCat?.label?.toLowerCase() || '';
+      bValue = bCat?.label?.toLowerCase() || '';
+    } else if (key === 'amount') {
+      aValue = Number(a.amount) || 0;
+      bValue = Number(b.amount) || 0;
+    } else if (key === 'description') {
+      aValue = (a.description || '').toLowerCase();
+      bValue = (b.description || '').toLowerCase();
+    } else {
+      aValue = a[key as keyof FinanceExpense];
+      bValue = b[key as keyof FinanceExpense];
+      if (typeof aValue === 'string') aValue = aValue.toLowerCase();
+      if (typeof bValue === 'string') bValue = bValue.toLowerCase();
+    }
+
+    if (aValue < bValue) return direction === 'asc' ? -1 : 1;
+    if (aValue > bValue) return direction === 'asc' ? 1 : -1;
+    return 0;
+  });
+
   const exportToCSV = () => {
     if (filteredExpenses.length === 0) {
       alert('No expenses to export');
@@ -630,11 +673,51 @@ export function ExpenseManager({ canManage }: ExpenseManagerProps) {
         <table className="min-w-full divide-y divide-gray-200">
           <thead className="bg-gray-50">
             <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Category</th>
+              <th
+                onClick={() => handleSort('date')}
+                className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100 select-none"
+              >
+                <div className="flex items-center gap-1">
+                  Date
+                  {sortConfig?.key === 'date' && (
+                    <span className="text-blue-600">{sortConfig.direction === 'asc' ? '↑' : '↓'}</span>
+                  )}
+                </div>
+              </th>
+              <th
+                onClick={() => handleSort('category')}
+                className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100 select-none"
+              >
+                <div className="flex items-center gap-1">
+                  Category
+                  {sortConfig?.key === 'category' && (
+                    <span className="text-blue-600">{sortConfig.direction === 'asc' ? '↑' : '↓'}</span>
+                  )}
+                </div>
+              </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Context</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Description</th>
-              <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Amount</th>
+              <th
+                onClick={() => handleSort('description')}
+                className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100 select-none"
+              >
+                <div className="flex items-center gap-1">
+                  Description
+                  {sortConfig?.key === 'description' && (
+                    <span className="text-blue-600">{sortConfig.direction === 'asc' ? '↑' : '↓'}</span>
+                  )}
+                </div>
+              </th>
+              <th
+                onClick={() => handleSort('amount')}
+                className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100 select-none"
+              >
+                <div className="flex items-center justify-end gap-1">
+                  Amount
+                  {sortConfig?.key === 'amount' && (
+                    <span className="text-blue-600">{sortConfig.direction === 'asc' ? '↑' : '↓'}</span>
+                  )}
+                </div>
+              </th>
               <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase">Payment Method</th>
               <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase">Treatment</th>
               <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase">Bank Recon</th>
@@ -655,7 +738,7 @@ export function ExpenseManager({ canManage }: ExpenseManagerProps) {
                 </td>
               </tr>
             ) : (
-              filteredExpenses.map((expense) => {
+              sortedExpenses.map((expense) => {
                 const category = expenseCategories.find(c => c.value === expense.expense_category);
                 const isReconciled = reconciledExpenseIds.has(expense.id);
 
