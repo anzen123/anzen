@@ -16,7 +16,9 @@ export function NavigationProvider({ children }: { children: React.ReactNode }) 
   // Read initial page from URL hash
   const getPageFromHash = () => {
     const hash = window.location.hash.slice(1) || 'dashboard';
-    return hash;
+    // For nested routes like "finance/reconciliation", return just "finance"
+    const page = hash.split('/')[0];
+    return page;
   };
 
   const [currentPage, setCurrentPageState] = useState(getPageFromHash());
