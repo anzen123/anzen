@@ -243,15 +243,16 @@ export function BankAccountsManager({ canManage }: Props) {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Opening Balance *</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Opening Balance</label>
               <input
                 type="number"
                 value={formData.opening_balance === 0 ? '' : formData.opening_balance}
                 onChange={(e) => setFormData({ ...formData, opening_balance: e.target.value === '' ? 0 : Number(e.target.value) })}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                required
                 step="0.01"
+                placeholder="0"
               />
+              <p className="text-xs text-gray-500 mt-1">Leave blank if opening balance is zero</p>
             </div>
           </div>
 
