@@ -24,6 +24,18 @@ interface SalesInvoice {
   balance_amount: number;
 }
 
+interface SalesOrder {
+  id: string;
+  so_number: string;
+  so_date: string;
+  total_amount: number;
+  advance_payment_amount: number;
+  advance_payment_status: string;
+  balance_due: number;
+}
+
+type AllocationTarget = (SalesInvoice & { type: 'invoice' }) | (SalesOrder & { type: 'salesorder' });
+
 interface ReceiptVoucher {
   id: string;
   voucher_number: string;
@@ -47,11 +59,11 @@ export function ReceiptVoucherManager({ canManage }: ReceiptVoucherManagerProps)
   const [vouchers, setVouchers] = useState<ReceiptVoucher[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
-  const [pendingInvoices, setPendingInvoices] = useState<SalesInvoice[]>([]);
+  const [allocationTargets, setAllocationTargets] = useState<AllocationTarget[]>([]);
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
-  const [allocations, setAllocations] = useState<{ invoiceId: string; amount: number }[]>([]);
+  const [allocations, setAllocations] = useState<{ targetId: string; targetType: 'invoice' | 'salesorder'; amount: number }[]>([]);
 
   const [formData, setFormData] = useState({
     voucher_date: new Date().toISOString().split('T')[0],
@@ -71,9 +83,9 @@ export function ReceiptVoucherManager({ canManage }: ReceiptVoucherManagerProps)
 
   useEffect(() => {
     if (formData.customer_id) {
-      loadPendingInvoices(formData.customer_id);
+      loadAllocationTargets(formData.customer_id);
     } else {
-      setPendingInvoices([]);
+      setAllocationTargets([]);
       setAllocations([]);
     }
   }, [formData.customer_id]);
@@ -104,16 +116,44 @@ export function ReceiptVoucherManager({ canManage }: ReceiptVoucherManagerProps)
     setBankAccounts(data || []);
   };
 
-  const loadPendingInvoices = async (customerId: string) => {
-    const { data } = await supabase
-      .from('sales_invoices')
-      .select('id, invoice_number, invoice_date, total_amount, paid_amount, balance_amount')
-      .eq('customer_id', customerId)
-      .gt('balance_amount', 0)
-      .order('invoice_date');
-    
-    setPendingInvoices(data || []);
-    setAllocations([]);
+  const loadAllocationTargets = async (customerId: string) => {
+    try {
+      // Load pending invoices
+      const { data: invoices } = await supabase
+        .from('sales_invoices')
+        .select('id, invoice_number, invoice_date, total_amount, paid_amount, balance_amount')
+        .eq('customer_id', customerId)
+        .gt('balance_amount', 0)
+        .order('invoice_date');
+
+      // Load sales orders (pending or approved with balance due)
+      const { data: salesOrders } = await supabase
+        .from('sales_orders')
+        .select('id, so_number, so_date, total_amount, advance_payment_amount, advance_payment_status')
+        .eq('customer_id', customerId)
+        .in('status', ['pending', 'approved'])
+        .order('so_date');
+
+      // Combine both into allocation targets
+      const targets: AllocationTarget[] = [
+        ...(salesOrders || []).filter(so =>
+          so.advance_payment_status !== 'full' // Only show SO if not fully paid
+        ).map(so => ({
+          ...so,
+          balance_due: so.total_amount - (so.advance_payment_amount || 0),
+          type: 'salesorder' as const
+        })),
+        ...(invoices || []).map(inv => ({
+          ...inv,
+          type: 'invoice' as const
+        }))
+      ];
+
+      setAllocationTargets(targets);
+      setAllocations([]);
+    } catch (error) {
+      console.error('Error loading allocation targets:', error);
+    }
   };
 
   const generateVoucherNumber = async () => {
@@ -127,17 +167,17 @@ export function ReceiptVoucherManager({ canManage }: ReceiptVoucherManagerProps)
     return `RV${year}${month}-${String((count || 0) + 1).padStart(4, '0')}`;
   };
 
-  const handleAllocationChange = (invoiceId: string, amount: number) => {
+  const handleAllocationChange = (targetId: string, targetType: 'invoice' | 'salesorder', amount: number) => {
     setAllocations(prev => {
-      const existing = prev.find(a => a.invoiceId === invoiceId);
+      const existing = prev.find(a => a.targetId === targetId);
       if (existing) {
         if (amount <= 0) {
-          return prev.filter(a => a.invoiceId !== invoiceId);
+          return prev.filter(a => a.targetId !== targetId);
         }
-        return prev.map(a => a.invoiceId === invoiceId ? { ...a, amount } : a);
+        return prev.map(a => a.targetId === targetId ? { ...a, amount } : a);
       }
       if (amount > 0) {
-        return [...prev, { invoiceId, amount }];
+        return [...prev, { targetId, targetType, amount }];
       }
       return prev;
     });
@@ -178,25 +218,37 @@ export function ReceiptVoucherManager({ canManage }: ReceiptVoucherManagerProps)
       if (error) throw error;
 
       for (const alloc of allocations) {
-        await supabase.from('voucher_allocations').insert({
-          voucher_type: 'receipt',
-          receipt_voucher_id: voucher.id,
-          sales_invoice_id: alloc.invoiceId,
-          allocated_amount: alloc.amount,
-        });
+        if (alloc.targetType === 'invoice') {
+          // Allocate to Sales Invoice
+          await supabase.from('voucher_allocations').insert({
+            voucher_type: 'receipt',
+            receipt_voucher_id: voucher.id,
+            sales_invoice_id: alloc.targetId,
+            allocated_amount: alloc.amount,
+          });
 
-        const invoice = pendingInvoices.find(i => i.id === alloc.invoiceId);
-        if (invoice) {
-          const newPaidAmount = (invoice.paid_amount || 0) + alloc.amount;
-          const newBalance = invoice.total_amount - newPaidAmount;
-          await supabase
-            .from('sales_invoices')
-            .update({
-              paid_amount: newPaidAmount,
-              balance_amount: newBalance,
-              status: newBalance <= 0 ? 'paid' : 'partial',
-            })
-            .eq('id', alloc.invoiceId);
+          const invoice = allocationTargets.find(t => t.type === 'invoice' && t.id === alloc.targetId) as (SalesInvoice & { type: 'invoice' });
+          if (invoice) {
+            const newPaidAmount = (invoice.paid_amount || 0) + alloc.amount;
+            const newBalance = invoice.total_amount - newPaidAmount;
+            await supabase
+              .from('sales_invoices')
+              .update({
+                paid_amount: newPaidAmount,
+                balance_amount: newBalance,
+                payment_status: newBalance <= 0 ? 'paid' : 'partial',
+              })
+              .eq('id', alloc.targetId);
+          }
+        } else if (alloc.targetType === 'salesorder') {
+          // Allocate to Sales Order (Advance Payment)
+          await supabase.from('voucher_allocations').insert({
+            voucher_type: 'receipt',
+            receipt_voucher_id: voucher.id,
+            sales_order_id: alloc.targetId,
+            allocated_amount: alloc.amount,
+          });
+          // Note: SO advance status will be auto-updated by trigger
         }
       }
 
@@ -220,7 +272,7 @@ export function ReceiptVoucherManager({ canManage }: ReceiptVoucherManagerProps)
       description: '',
     });
     setAllocations([]);
-    setPendingInvoices([]);
+    setAllocationTargets([]);
   };
 
   const filteredVouchers = vouchers.filter(v =>
@@ -391,50 +443,80 @@ export function ReceiptVoucherManager({ canManage }: ReceiptVoucherManagerProps)
             />
           </div>
 
-          {pendingInvoices.length > 0 && (
+          {allocationTargets.length > 0 && (
             <div className="border-t pt-4">
-              <h4 className="font-medium text-gray-700 mb-3">Allocate to Invoices</h4>
-              <div className="max-h-48 overflow-y-auto border rounded-lg">
+              <h4 className="font-medium text-gray-700 mb-3">Allocate Payment</h4>
+              <p className="text-xs text-gray-500 mb-2">
+                Link this payment to Sales Orders (advance) or Sales Invoices
+              </p>
+              <div className="max-h-64 overflow-y-auto border rounded-lg">
                 <table className="w-full text-sm">
                   <thead className="bg-gray-50 sticky top-0">
                     <tr>
-                      <th className="px-3 py-2 text-left">Invoice</th>
-                      <th className="px-3 py-2 text-right">Balance</th>
-                      <th className="px-3 py-2 text-right">Allocate</th>
+                      <th className="px-3 py-2 text-left">Document</th>
+                      <th className="px-3 py-2 text-center">Type</th>
+                      <th className="px-3 py-2 text-right">Balance Due</th>
+                      <th className="px-3 py-2 text-right">Allocate (Rp)</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y">
-                    {pendingInvoices.map(inv => (
-                      <tr key={inv.id}>
-                        <td className="px-3 py-2">
-                          <div className="font-mono">{inv.invoice_number}</div>
-                          <div className="text-gray-500 text-xs">{new Date(inv.invoice_date).toLocaleDateString('id-ID')}</div>
-                        </td>
-                        <td className="px-3 py-2 text-right text-red-600">
-                          Rp {inv.balance_amount.toLocaleString('id-ID')}
-                        </td>
-                        <td className="px-3 py-2">
-                          <input
-                            type="number"
-                            min={0}
-                            max={inv.balance_amount}
-                            value={allocations.find(a => a.invoiceId === inv.id)?.amount || ''}
-                            onChange={(e) => handleAllocationChange(inv.id, parseFloat(e.target.value) || 0)}
-                            className="w-24 px-2 py-1 border rounded text-right"
-                            placeholder="0"
-                          />
-                        </td>
-                      </tr>
-                    ))}
+                    {allocationTargets.map(target => {
+                      const balance = target.type === 'invoice'
+                        ? (target as SalesInvoice & { type: 'invoice' }).balance_amount
+                        : (target as SalesOrder & { type: 'salesorder' }).balance_due;
+                      const docNumber = target.type === 'invoice'
+                        ? (target as SalesInvoice & { type: 'invoice' }).invoice_number
+                        : (target as SalesOrder & { type: 'salesorder' }).so_number;
+                      const docDate = target.type === 'invoice'
+                        ? (target as SalesInvoice & { type: 'invoice' }).invoice_date
+                        : (target as SalesOrder & { type: 'salesorder' }).so_date;
+
+                      return (
+                        <tr key={`${target.type}-${target.id}`}>
+                          <td className="px-3 py-2">
+                            <div className="font-mono text-xs">{docNumber}</div>
+                            <div className="text-gray-500 text-xs">{new Date(docDate).toLocaleDateString('id-ID')}</div>
+                          </td>
+                          <td className="px-3 py-2 text-center">
+                            <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                              target.type === 'salesorder'
+                                ? 'bg-purple-100 text-purple-700'
+                                : 'bg-blue-100 text-blue-700'
+                            }`}>
+                              {target.type === 'salesorder' ? 'SO (Advance)' : 'Invoice'}
+                            </span>
+                          </td>
+                          <td className="px-3 py-2 text-right text-red-600 font-medium">
+                            Rp {balance.toLocaleString('id-ID')}
+                          </td>
+                          <td className="px-3 py-2">
+                            <input
+                              type="number"
+                              min={0}
+                              max={balance}
+                              value={allocations.find(a => a.targetId === target.id)?.amount || ''}
+                              onChange={(e) => handleAllocationChange(target.id, target.type, parseFloat(e.target.value) || 0)}
+                              className="w-28 px-2 py-1 border rounded text-right text-xs"
+                              placeholder="0"
+                            />
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
-              <div className="mt-2 text-right text-sm">
-                <span className="text-gray-500">Total Allocated:</span>
-                <span className={`ml-2 font-medium ${totalAllocated > formData.amount ? 'text-red-600' : 'text-green-600'}`}>
-                  Rp {totalAllocated.toLocaleString('id-ID')}
-                </span>
-                <span className="text-gray-400 ml-1">/ Rp {formData.amount.toLocaleString('id-ID')}</span>
+              <div className="mt-3 flex justify-between items-center text-sm">
+                <div className="text-gray-600">
+                  <span className="font-medium">{allocations.length}</span> allocation(s)
+                </div>
+                <div className="text-right">
+                  <span className="text-gray-500">Total Allocated:</span>
+                  <span className={`ml-2 font-bold text-lg ${totalAllocated > formData.amount ? 'text-red-600' : 'text-green-600'}`}>
+                    Rp {totalAllocated.toLocaleString('id-ID')}
+                  </span>
+                  <span className="text-gray-400 ml-1">/ Rp {formData.amount.toLocaleString('id-ID')}</span>
+                </div>
               </div>
             </div>
           )}
