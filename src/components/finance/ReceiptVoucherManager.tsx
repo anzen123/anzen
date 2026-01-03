@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
-import { Plus, Eye, Search, ArrowDownCircle, Check } from 'lucide-react';
+import { Plus, Eye, Search, ArrowDownCircle, Check, Edit2, Trash2, X } from 'lucide-react';
 import { Modal } from '../Modal';
 
 interface Customer {
@@ -62,6 +62,10 @@ export function ReceiptVoucherManager({ canManage }: ReceiptVoucherManagerProps)
   const [allocationTargets, setAllocationTargets] = useState<AllocationTarget[]>([]);
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
+  const [viewModalOpen, setViewModalOpen] = useState(false);
+  const [editMode, setEditMode] = useState(false);
+  const [selectedVoucher, setSelectedVoucher] = useState<ReceiptVoucher | null>(null);
+  const [voucherAllocations, setVoucherAllocations] = useState<any[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [allocations, setAllocations] = useState<{ targetId: string; targetType: 'invoice' | 'salesorder'; amount: number }[]>([]);
 
@@ -197,25 +201,55 @@ export function ReceiptVoucherManager({ canManage }: ReceiptVoucherManagerProps)
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
-      const voucherNumber = await generateVoucherNumber();
+      let voucher;
 
-      const { data: voucher, error } = await supabase
-        .from('receipt_vouchers')
-        .insert([{
-          voucher_number: voucherNumber,
-          voucher_date: formData.voucher_date,
-          customer_id: formData.customer_id,
-          payment_method: formData.payment_method,
-          bank_account_id: formData.bank_account_id || null,
-          reference_number: formData.reference_number || null,
-          amount: formData.amount,
-          description: formData.description || null,
-          created_by: user.id,
-        }])
-        .select()
-        .single();
+      if (editMode && selectedVoucher) {
+        // UPDATE existing voucher
+        const { data: updatedVoucher, error } = await supabase
+          .from('receipt_vouchers')
+          .update({
+            voucher_date: formData.voucher_date,
+            payment_method: formData.payment_method,
+            bank_account_id: formData.bank_account_id || null,
+            reference_number: formData.reference_number || null,
+            amount: formData.amount,
+            description: formData.description || null,
+          })
+          .eq('id', selectedVoucher.id)
+          .select()
+          .single();
 
-      if (error) throw error;
+        if (error) throw error;
+        voucher = updatedVoucher;
+
+        // Delete existing allocations
+        await supabase
+          .from('voucher_allocations')
+          .delete()
+          .eq('receipt_voucher_id', selectedVoucher.id);
+      } else {
+        // CREATE new voucher
+        const voucherNumber = await generateVoucherNumber();
+
+        const { data: newVoucher, error } = await supabase
+          .from('receipt_vouchers')
+          .insert([{
+            voucher_number: voucherNumber,
+            voucher_date: formData.voucher_date,
+            customer_id: formData.customer_id,
+            payment_method: formData.payment_method,
+            bank_account_id: formData.bank_account_id || null,
+            reference_number: formData.reference_number || null,
+            amount: formData.amount,
+            description: formData.description || null,
+            created_by: user.id,
+          }])
+          .select()
+          .single();
+
+        if (error) throw error;
+        voucher = newVoucher;
+      }
 
       for (const alloc of allocations) {
         if (alloc.targetType === 'invoice') {
@@ -273,6 +307,89 @@ export function ReceiptVoucherManager({ canManage }: ReceiptVoucherManagerProps)
     });
     setAllocations([]);
     setAllocationTargets([]);
+    setEditMode(false);
+    setSelectedVoucher(null);
+  };
+
+  const handleView = async (voucher: ReceiptVoucher) => {
+    setSelectedVoucher(voucher);
+
+    // Load allocations for this voucher
+    const { data: allocs } = await supabase
+      .from('voucher_allocations')
+      .select(`
+        *,
+        sales_invoices(invoice_number, total_amount),
+        sales_orders(so_number, total_amount)
+      `)
+      .eq('receipt_voucher_id', voucher.id);
+
+    setVoucherAllocations(allocs || []);
+    setViewModalOpen(true);
+  };
+
+  const handleEdit = async (voucher: ReceiptVoucher) => {
+    setSelectedVoucher(voucher);
+    setEditMode(true);
+
+    // Populate form with existing data
+    setFormData({
+      voucher_date: voucher.voucher_date,
+      customer_id: voucher.customer_id,
+      payment_method: voucher.payment_method,
+      bank_account_id: voucher.bank_account_id || '',
+      reference_number: voucher.reference_number || '',
+      amount: voucher.amount,
+      description: voucher.description || '',
+    });
+
+    // Load existing allocations
+    const { data: allocs } = await supabase
+      .from('voucher_allocations')
+      .select('*')
+      .eq('receipt_voucher_id', voucher.id);
+
+    if (allocs) {
+      const existingAllocs = allocs.map(a => ({
+        targetId: a.sales_invoice_id || a.sales_order_id,
+        targetType: (a.sales_invoice_id ? 'invoice' : 'salesorder') as 'invoice' | 'salesorder',
+        amount: a.allocated_amount
+      }));
+      setAllocations(existingAllocs);
+    }
+
+    // Load allocation targets for this customer
+    await loadAllocationTargets(voucher.customer_id);
+
+    setModalOpen(true);
+  };
+
+  const handleDelete = async (voucher: ReceiptVoucher) => {
+    if (!confirm(`Delete receipt voucher ${voucher.voucher_number}? This will remove all allocations and cannot be undone.`)) {
+      return;
+    }
+
+    try {
+      // Delete allocations first (cascade should handle this, but being explicit)
+      await supabase
+        .from('voucher_allocations')
+        .delete()
+        .eq('receipt_voucher_id', voucher.id);
+
+      // Delete voucher
+      const { error } = await supabase
+        .from('receipt_vouchers')
+        .delete()
+        .eq('id', voucher.id);
+
+      if (error) throw error;
+
+      alert('Receipt voucher deleted successfully');
+      loadVouchers();
+    } catch (error: any) {
+      console.error('Error deleting voucher:', error);
+      alert('Failed to delete: ' + error.message);
+    }
   };
 
   const filteredVouchers = vouchers.filter(v =>
@@ -318,6 +435,7 @@ export function ReceiptVoucherManager({ canManage }: ReceiptVoucherManagerProps)
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Method</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Reference</th>
               <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Amount</th>
+              <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y">
@@ -335,11 +453,40 @@ export function ReceiptVoucherManager({ canManage }: ReceiptVoucherManagerProps)
                 <td className="px-4 py-3 text-right font-medium text-green-600">
                   Rp {voucher.amount.toLocaleString('id-ID')}
                 </td>
+                <td className="px-4 py-3">
+                  <div className="flex items-center justify-center gap-2">
+                    <button
+                      onClick={() => handleView(voucher)}
+                      className="p-1 text-blue-600 hover:bg-blue-50 rounded"
+                      title="View Details"
+                    >
+                      <Eye className="w-4 h-4" />
+                    </button>
+                    {canManage && (
+                      <>
+                        <button
+                          onClick={() => handleEdit(voucher)}
+                          className="p-1 text-amber-600 hover:bg-amber-50 rounded"
+                          title="Edit"
+                        >
+                          <Edit2 className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => handleDelete(voucher)}
+                          className="p-1 text-red-600 hover:bg-red-50 rounded"
+                          title="Delete"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </td>
               </tr>
             ))}
             {filteredVouchers.length === 0 && (
               <tr>
-                <td colSpan={6} className="px-4 py-8 text-center text-gray-500">
+                <td colSpan={7} className="px-4 py-8 text-center text-gray-500">
                   No receipt vouchers found
                 </td>
               </tr>
@@ -348,7 +495,7 @@ export function ReceiptVoucherManager({ canManage }: ReceiptVoucherManagerProps)
         </table>
       </div>
 
-      <Modal isOpen={modalOpen} onClose={() => setModalOpen(false)} title="New Receipt Voucher">
+      <Modal isOpen={modalOpen} onClose={() => { setModalOpen(false); resetForm(); }} title={editMode ? "Edit Receipt Voucher" : "New Receipt Voucher"}>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div>
@@ -530,6 +677,103 @@ export function ReceiptVoucherManager({ canManage }: ReceiptVoucherManagerProps)
             </button>
           </div>
         </form>
+      </Modal>
+
+      {/* View Details Modal */}
+      <Modal
+        isOpen={viewModalOpen}
+        onClose={() => { setViewModalOpen(false); setSelectedVoucher(null); setVoucherAllocations([]); }}
+        title="Receipt Voucher Details"
+      >
+        {selectedVoucher && (
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-500">Voucher Number</label>
+                <p className="font-mono font-medium">{selectedVoucher.voucher_number}</p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-500">Date</label>
+                <p>{new Date(selectedVoucher.voucher_date).toLocaleDateString('id-ID')}</p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-500">Customer</label>
+                <p>{selectedVoucher.customers?.company_name}</p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-500">Payment Method</label>
+                <p className="capitalize">{selectedVoucher.payment_method.replace('_', ' ')}</p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-500">Bank Account</label>
+                <p>{selectedVoucher.bank_accounts ? `${selectedVoucher.bank_accounts.bank_name} - ${selectedVoucher.bank_accounts.account_name}` : '-'}</p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-500">Reference</label>
+                <p>{selectedVoucher.reference_number || '-'}</p>
+              </div>
+              <div className="col-span-2">
+                <label className="block text-sm font-medium text-gray-500">Amount</label>
+                <p className="text-2xl font-bold text-green-600">Rp {selectedVoucher.amount.toLocaleString('id-ID')}</p>
+              </div>
+              {selectedVoucher.description && (
+                <div className="col-span-2">
+                  <label className="block text-sm font-medium text-gray-500">Description</label>
+                  <p className="text-gray-700">{selectedVoucher.description}</p>
+                </div>
+              )}
+            </div>
+
+            <div className="border-t pt-4">
+              <h4 className="font-medium text-gray-700 mb-3">Allocations</h4>
+              {voucherAllocations.length > 0 ? (
+                <div className="border rounded-lg overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-3 py-2 text-left">Document</th>
+                        <th className="px-3 py-2 text-center">Type</th>
+                        <th className="px-3 py-2 text-right">Amount</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y">
+                      {voucherAllocations.map((alloc, idx) => (
+                        <tr key={idx}>
+                          <td className="px-3 py-2 font-mono text-xs">
+                            {alloc.sales_invoices ? alloc.sales_invoices.invoice_number : alloc.sales_orders?.so_number}
+                          </td>
+                          <td className="px-3 py-2 text-center">
+                            <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                              alloc.sales_order_id
+                                ? 'bg-purple-100 text-purple-700'
+                                : 'bg-blue-100 text-blue-700'
+                            }`}>
+                              {alloc.sales_order_id ? 'SO (Advance)' : 'Invoice'}
+                            </span>
+                          </td>
+                          <td className="px-3 py-2 text-right font-medium">
+                            Rp {alloc.allocated_amount.toLocaleString('id-ID')}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <p className="text-gray-500 text-sm">No allocations</p>
+              )}
+            </div>
+
+            <div className="flex justify-end pt-4">
+              <button
+                onClick={() => { setViewModalOpen(false); setSelectedVoucher(null); setVoucherAllocations([]); }}
+                className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        )}
       </Modal>
     </div>
   );

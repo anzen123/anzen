@@ -173,41 +173,62 @@ export function ReceivablesManager({ canManage }: { canManage: boolean }) {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
-      // 1. Insert payment record
-      const { data: payment, error: paymentError } = await supabase
-        .from('customer_payments')
+      // 1. Generate voucher number
+      const year = new Date().getFullYear().toString().slice(-2);
+      const month = (new Date().getMonth() + 1).toString().padStart(2, '0');
+      const { count } = await supabase
+        .from('receipt_vouchers')
+        .select('*', { count: 'exact', head: true })
+        .like('voucher_number', `RV${year}${month}%`);
+
+      const voucherNumber = `RV${year}${month}-${String((count || 0) + 1).padStart(4, '0')}`;
+
+      // 2. Insert receipt voucher
+      const { data: voucher, error: voucherError } = await supabase
+        .from('receipt_vouchers')
         .insert([{
-          payment_number: formData.payment_number,
+          voucher_number: voucherNumber,
+          voucher_date: formData.payment_date,
           customer_id: selectedInvoice.customer_id,
-          invoice_id: null,
-          payment_date: formData.payment_date,
-          amount: formData.amount,
           payment_method: formData.payment_method,
           bank_account_id: formData.bank_account_id || null,
           reference_number: formData.reference_number || null,
-          notes: formData.notes || null,
+          amount: formData.amount,
+          description: formData.notes || null,
           created_by: user.id,
         }])
         .select()
         .single();
 
-      if (paymentError) throw paymentError;
+      if (voucherError) throw voucherError;
 
-      // 2. Insert allocation records
-      const allocations = Object.entries(selectedAllocations)
-        .filter(([_, amount]) => amount > 0)
-        .map(([invoiceId, amount]) => ({
-          invoice_id: invoiceId,
-          payment_id: payment.id,
+      // 3. Insert voucher allocations and update invoices
+      for (const [invoiceId, amount] of Object.entries(selectedAllocations)) {
+        if (amount <= 0) continue;
+
+        // Create allocation
+        await supabase.from('voucher_allocations').insert({
+          voucher_type: 'receipt',
+          receipt_voucher_id: voucher.id,
+          sales_invoice_id: invoiceId,
           allocated_amount: amount,
-          created_by: user.id,
-        }));
+        });
 
-      const { error: allocError } = await supabase
-        .from('invoice_payment_allocations')
-        .insert(allocations);
-
-      if (allocError) throw allocError;
+        // Update invoice payment status
+        const invoice = customerInvoices.find(inv => inv.id === invoiceId);
+        if (invoice) {
+          const newPaidAmount = (invoice.paid_amount || 0) + amount;
+          const newBalance = invoice.total_amount - newPaidAmount;
+          await supabase
+            .from('sales_invoices')
+            .update({
+              paid_amount: newPaidAmount,
+              balance_amount: newBalance,
+              payment_status: newBalance <= 0 ? 'paid' : 'partial',
+            })
+            .eq('id', invoiceId);
+        }
+      }
 
       setModalOpen(false);
       setSelectedInvoice(null);
@@ -215,7 +236,7 @@ export function ReceivablesManager({ canManage }: { canManage: boolean }) {
       setSelectedAllocations({});
       resetForm();
       loadData();
-      alert('Payment recorded and allocated successfully!');
+      alert(`Receipt voucher ${voucherNumber} created and allocated successfully!`);
     } catch (error: any) {
       console.error('Error recording payment:', error);
       alert(`Failed to record payment: ${error.message}`);
